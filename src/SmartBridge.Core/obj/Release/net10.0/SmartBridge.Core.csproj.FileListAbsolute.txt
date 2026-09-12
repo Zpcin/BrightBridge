@@ -1,0 +1,11 @@
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\bin\Release\net10.0\SmartBridge.Core.deps.json
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\bin\Release\net10.0\SmartBridge.Core.dll
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\bin\Release\net10.0\SmartBridge.Core.pdb
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.AssemblyInfoInputs.cache
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.AssemblyInfo.cs
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.csproj.CoreCompileInputs.cache
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.dll
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\refint\SmartBridge.Core.dll
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\SmartBridge.Core.pdb
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Release\net10.0\ref\SmartBridge.Core.dll

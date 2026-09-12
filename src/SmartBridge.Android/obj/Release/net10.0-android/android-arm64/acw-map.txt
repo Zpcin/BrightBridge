@@ -1,0 +1,39 @@
+Android.Runtime.InputStreamAdapter, Mono.Android;mono.android.runtime.InputStreamAdapter
+Android.Runtime.InputStreamAdapter;mono.android.runtime.InputStreamAdapter
+mono.android.runtime.InputStreamAdapter;mono.android.runtime.InputStreamAdapter
+Android.Runtime.JavaProxyThrowable, Mono.Android;android.runtime.JavaProxyThrowable
+Android.Runtime.JavaProxyThrowable;android.runtime.JavaProxyThrowable
+android.runtime.JavaProxyThrowable;android.runtime.JavaProxyThrowable
+Android.Runtime.OutputStreamAdapter, Mono.Android;mono.android.runtime.OutputStreamAdapter
+Android.Runtime.OutputStreamAdapter;mono.android.runtime.OutputStreamAdapter
+mono.android.runtime.OutputStreamAdapter;mono.android.runtime.OutputStreamAdapter
+Android.Speech.Tts.TextToSpeech+IOnInitListener, Mono.Android;android.speech.tts.TextToSpeech$OnInitListener
+Android.Speech.Tts.TextToSpeech.IOnInitListener;android.speech.tts.TextToSpeech$OnInitListener
+android.speech.tts.TextToSpeech$OnInitListener;android.speech.tts.TextToSpeech$OnInitListener
+Android.Util.IAttributeSet, Mono.Android;android.util.AttributeSet
+Android.Util.IAttributeSet;android.util.AttributeSet
+android.util.AttributeSet;android.util.AttributeSet
+Android.Views.View+IOnClickListener, Mono.Android;android.view.View$OnClickListener
+Android.Views.View.IOnClickListener;android.view.View$OnClickListener
+android.view.View$OnClickListener;android.view.View$OnClickListener
+Android.Views.View+IOnClickListenerImplementor, Mono.Android;mono.android.view.View_OnClickListenerImplementor
+Android.Views.View.IOnClickListenerImplementor;mono.android.view.View_OnClickListenerImplementor
+mono.android.view.View_OnClickListenerImplementor;mono.android.view.View_OnClickListenerImplementor
+Java.Lang.ICharSequence, Mono.Android;java.lang.CharSequence
+Java.Lang.ICharSequence;java.lang.CharSequence
+java.lang.CharSequence;java.lang.CharSequence
+Java.Lang.IRunnable, Mono.Android;java.lang.Runnable
+Java.Lang.IRunnable;java.lang.Runnable
+java.lang.Runnable;java.lang.Runnable
+Java.Lang.Thread+RunnableImplementor, Mono.Android;mono.java.lang.RunnableImplementor
+Java.Lang.Thread.RunnableImplementor;mono.java.lang.RunnableImplementor
+mono.java.lang.RunnableImplementor;mono.java.lang.RunnableImplementor
+SmartBridge.Android.MainActivity, SmartBridge.Android;crc641e85548e048e352e.MainActivity
+SmartBridge.Android.MainActivity;crc641e85548e048e352e.MainActivity
+smartbridge.android.MainActivity;crc641e85548e048e352e.MainActivity
+SmartBridge.Android.MainActivity+GuideCanvas, SmartBridge.Android;crc641e85548e048e352e.MainActivity_GuideCanvas
+SmartBridge.Android.MainActivity.GuideCanvas;crc641e85548e048e352e.MainActivity_GuideCanvas
+smartbridge.android.MainActivity_GuideCanvas;crc641e85548e048e352e.MainActivity_GuideCanvas
+SmartBridge.Android.Services.AndroidTtsService, SmartBridge.Android;crc64cacf3ba476784638.AndroidTtsService
+SmartBridge.Android.Services.AndroidTtsService;crc64cacf3ba476784638.AndroidTtsService
+smartbridge.android.services.AndroidTtsService;crc64cacf3ba476784638.AndroidTtsService

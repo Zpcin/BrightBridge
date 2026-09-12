@@ -1,0 +1,42 @@
+<api>
+  <jcw-types>
+    <type name="MainActivity" package="crc641e85548e048e352e" application_java_class="android.app.Application" mono_runtime_initialization="mono.MonoPackageManager.LoadApplication (context);" extends_type="android.app.Activity" partial_assembly_qualified_name="SmartBridge.Android.MainActivity, SmartBridge.Android">
+      <constructors>
+        <constructor name="MainActivity" method="n_.ctor:()V:" jni_signature="()V" managed_parameters="" retval="void" is_dynamically_registered="True" />
+      </constructors>
+      <methods>
+        <method name="onDestroy" method="n_onDestroy:()V:GetOnDestroyHandler" jni_signature="()V" retval="void" />
+        <method name="onCreate" method="n_onCreate:(Landroid/os/Bundle;)V:GetOnCreate_Landroid_os_Bundle_Handler" jni_signature="(Landroid/os/Bundle;)V" params="android.os.Bundle p0" retval="void" super_call="p0" activate_call="p0" />
+        <method name="onActivityResult" method="n_onActivityResult:(IILandroid/content/Intent;)V:GetOnActivityResult_IILandroid_content_Intent_Handler" jni_signature="(IILandroid/content/Intent;)V" params="int p0, int p1, android.content.Intent p2" retval="void" super_call="p0, p1, p2" activate_call="p0, p1, p2" />
+      </methods>
+    </type>
+    <type name="MainActivity_GuideCanvas" package="crc641e85548e048e352e" application_java_class="android.app.Application" mono_runtime_initialization="mono.MonoPackageManager.LoadApplication (context);" extends_type="android.view.View" partial_assembly_qualified_name="SmartBridge.Android.MainActivity+GuideCanvas, SmartBridge.Android">
+      <constructors>
+        <constructor name="MainActivity_GuideCanvas" method="n_.ctor:(Landroid/content/Context;Landroid/util/AttributeSet;I)V:" jni_signature="(Landroid/content/Context;Landroid/util/AttributeSet;I)V" managed_parameters="Android.Content.Context, Mono.Android:Android.Util.IAttributeSet, Mono.Android:System.Int32, System.Private.CoreLib" params="android.content.Context p0, android.util.AttributeSet p1, int p2" retval="void" is_dynamically_registered="True" super_call="p0, p1, p2" activate_call="p0, p1, p2" />
+        <constructor name="MainActivity_GuideCanvas" method="n_.ctor:(Landroid/content/Context;Landroid/util/AttributeSet;)V:" jni_signature="(Landroid/content/Context;Landroid/util/AttributeSet;)V" managed_parameters="Android.Content.Context, Mono.Android:Android.Util.IAttributeSet, Mono.Android" params="android.content.Context p0, android.util.AttributeSet p1" retval="void" is_dynamically_registered="True" super_call="p0, p1" activate_call="p0, p1" />
+        <constructor name="MainActivity_GuideCanvas" method="n_.ctor:(Landroid/content/Context;)V:" jni_signature="(Landroid/content/Context;)V" managed_parameters="Android.Content.Context, Mono.Android" params="android.content.Context p0" retval="void" is_dynamically_registered="True" super_call="p0" activate_call="p0" />
+      </constructors>
+      <methods>
+        <method name="onDraw" method="n_onDraw:(Landroid/graphics/Canvas;)V:GetOnDraw_Landroid_graphics_Canvas_Handler" jni_signature="(Landroid/graphics/Canvas;)V" params="android.graphics.Canvas p0" retval="void" super_call="p0" activate_call="p0" />
+        <method name="onTouchEvent" method="n_onTouchEvent:(Landroid/view/MotionEvent;)Z:GetOnTouchEvent_Landroid_view_MotionEvent_Handler" jni_signature="(Landroid/view/MotionEvent;)Z" params="android.view.MotionEvent p0" retval="boolean" super_call="p0" activate_call="p0" />
+      </methods>
+    </type>
+    <type name="AndroidTtsService" package="crc64cacf3ba476784638" application_java_class="android.app.Application" mono_runtime_initialization="mono.MonoPackageManager.LoadApplication (context);" extends_type="java.lang.Object" partial_assembly_qualified_name="SmartBridge.Android.Services.AndroidTtsService, SmartBridge.Android">
+      <implemented_interfaces>
+        <interface name="android.speech.tts.TextToSpeech.OnInitListener" />
+      </implemented_interfaces>
+      <constructors>
+        <constructor name="AndroidTtsService" method="n_.ctor:()V:" jni_signature="()V" managed_parameters="" retval="void" is_dynamically_registered="True" />
+        <constructor name="AndroidTtsService" method="n_.ctor:(Landroid/content/Context;)V:" jni_signature="(Landroid/content/Context;)V" managed_parameters="Android.Content.Context, Mono.Android" params="android.content.Context p0" retval="void" is_dynamically_registered="True" super_call="" activate_call="p0" />
+      </constructors>
+      <methods>
+        <method name="onInit" method="n_onInit:(I)V:GetOnInit_IHandler:Android.Speech.Tts.TextToSpeech+IOnInitListenerInvoker, Mono.Android, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null" jni_signature="(I)V" params="int p0" retval="void" super_call="p0" activate_call="p0" />
+      </methods>
+    </type>
+  </jcw-types>
+  <acw-types partial-assembly-name="SmartBridge.Android" module-name="SmartBridge.Android.dll">
+    <type assembly-qualified-name="SmartBridge.Android.MainActivity, SmartBridge.Android, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" compat-jni-name="smartbridge.android.MainActivity" java-key="crc641e85548e048e352e.MainActivity" managed-key="SmartBridge.Android.MainActivity" partial-assembly-qualified-name="SmartBridge.Android.MainActivity, SmartBridge.Android" />
+    <type assembly-qualified-name="SmartBridge.Android.MainActivity+GuideCanvas, SmartBridge.Android, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" compat-jni-name="smartbridge.android.MainActivity_GuideCanvas" java-key="crc641e85548e048e352e.MainActivity_GuideCanvas" managed-key="SmartBridge.Android.MainActivity.GuideCanvas" partial-assembly-qualified-name="SmartBridge.Android.MainActivity+GuideCanvas, SmartBridge.Android" />
+    <type assembly-qualified-name="SmartBridge.Android.Services.AndroidTtsService, SmartBridge.Android, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" compat-jni-name="smartbridge.android.services.AndroidTtsService" java-key="crc64cacf3ba476784638.AndroidTtsService" managed-key="SmartBridge.Android.Services.AndroidTtsService" partial-assembly-qualified-name="SmartBridge.Android.Services.AndroidTtsService, SmartBridge.Android" />
+  </acw-types>
+</api>

@@ -1,0 +1,6 @@
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\bin\Debug\net10.0\android-arm64\SmartBridge.Core.deps.json
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\bin\Debug\net10.0\android-arm64\SmartBridge.Core.dll
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Debug\net10.0\android-arm64\SmartBridge.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Debug\net10.0\android-arm64\SmartBridge.Core.AssemblyInfoInputs.cache
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Debug\net10.0\android-arm64\SmartBridge.Core.AssemblyInfo.cs
+C:\Users\yi\geek\SmartBridge\src\SmartBridge.Core\obj\Debug\net10.0\android-arm64\SmartBridge.Core.csproj.CoreCompileInputs.cache

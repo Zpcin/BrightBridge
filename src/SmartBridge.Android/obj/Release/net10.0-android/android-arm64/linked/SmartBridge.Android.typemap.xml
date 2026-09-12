@@ -1,0 +1,9 @@
+<api type="release" assembly-name="SmartBridge.Android" mvid="f71b0000124b48dcb7025f788aeeeb93">
+  <module assembly-name="SmartBridge.Android" mvid="f71b0000124b48dcb7025f788aeeeb93" mvid-bytes="AAAb90sS3Ei3Al94iu7rkw==">
+    <types-scratch>
+      <entry key="crc641e85548e048e352e/MainActivity" java-name="crc641e85548e048e352e/MainActivity" managed-type-name="SmartBridge.Android.MainActivity" token="33554434" />
+      <entry key="crc641e85548e048e352e/MainActivity_GuideCanvas" java-name="crc641e85548e048e352e/MainActivity_GuideCanvas" managed-type-name="SmartBridge.Android.MainActivity/GuideCanvas" token="33554437" />
+      <entry key="crc64cacf3ba476784638/AndroidTtsService" java-name="crc64cacf3ba476784638/AndroidTtsService" managed-type-name="SmartBridge.Android.Services.AndroidTtsService" token="33554436" />
+    </types-scratch>
+  </module>
+</api>

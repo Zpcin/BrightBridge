@@ -25,6 +25,8 @@ public sealed class MainActivity : Activity
     LearningScene? _scene;
     global::Android.Net.Uri? _pendingScreenshot;
     const int ScreenshotRequestCode = 401;
+    const int VoiceRequestCode = 402;
+    string? _voiceTask;
 
     protected override void OnDestroy()
     {

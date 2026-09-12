@@ -1,724 +1,823 @@
-# 智触心桥 SmartBridge Web 重构架构计划
+> 面向培智学生、自闭症人士、银发老人和数字新手的数字生活仿真训练 App。
+  >
+  > 比赛版目标：最大化展示 AI 的即时生成能力，快速完成“自然语言任务 → AI 拆解 → 仿真界面 → 单步引导 → 完成反馈”的完整闭环。
 
-## 1. 重构目标
+  ---
 
-将现有“C# 原生 Android + Android Canvas”实现替换为 **TypeScript 核心 + React Web UI + Vite + Capacitor Android 壳**。
+  ## 1. 比赛版产品定位
 
-当前 C# 核心不作为 Web 运行时依赖。它仅保留为历史参考；新的核心模型、校验器、状态机、手势匹配、进度存储全部使用 TypeScript 重新实现。
+  「小引导」不是直接操作真实手机的工具，而是一个安全的数字生活仿真训练助手。
 
-首要目标不是复制当前界面，而是解决当前版本的核心问题：
+  用户可以输入：
 
-- 首页布局混乱、课程列表不可读；
-- 页面高度和滚动处理不正确；
-- 练习区域空白、信息层级不清晰；
-- Android 原生布局修改成本高；
-- 课程内容无法方便地由 JSON 驱动；
-- 当前核心状态与 UI 耦合，无法可靠扩展。
+  - “教我打开 Wi-Fi”
+  - “教我怎么拨打电话”
+  - “手机字体太小怎么办”
+  - “教我取快递”
 
-## 2. 总体技术方案
+  AI 会将抽象任务拆分成一次只执行一个动作的练习步骤，并生成可交互的仿真界面。
 
-```text
-React + TypeScript + Vite
+  ```text
+  自然语言任务
+    ↓
+  AI 理解任务
+    ↓
+  AI 拆解步骤
+    ↓
+  生成仿真页面
+    ↓
+  语音 / 文字单步引导
+    ↓
+  用户操作
+    ↓
+  即时反馈
+    ↓
+  完成任务
+
+  比赛版核心价值
+
+  1. AI 能理解用户的自然语言需求；
+  2. AI 能根据用户画像生成不同话术；
+  3. AI 能即时生成课程步骤；
+  4. AI 能生成可交互的仿真界面；
+  5. 用户点错不会造成真实损失；
+  6. 老人和儿童看到的引导方式不同；
+  7. 不需要预先编写大量固定课程。
+
+  ---
+
+  2. 比赛版范围
+
+  2.1 必须实现
+
+  - 儿童 / 学生模式；
+  - 老人模式；
+  - 自然语言任务输入；
+  - AI 生成课程；
+  - AI 生成儿童和老人两套话术；
+  - 仿真手机界面；
+  - 单步操作引导；
+  - tap；
+  - long_press；
+  - swipe；
+  - 点错反馈；
+  - 点对反馈；
+  - 课程完成页；
+  - 语音播报或文字播报；
+  - 本地演示课程 fallback；
+  - 三个完整演示场景；
+  - 基础移动端响应式布局。
+
+  2.2 比赛版暂不实现
+
+  以下内容不作为 MVP 阻塞项：
+
+  - 完整 17 个课程；
+  - 完整 IndexedDB 进度系统；
+  - 复杂掌握度算法；
+  - 老师审核工作流；
+  - Capacitor Android 打包；
+  - 真实系统设置操作；
+  - AccessibilityService；
+  - 真实拨号；
+  - 真实支付；
+  - 在线账号；
+  - 后端服务；
+  - 摄像头识别；
+  - LLM 本地部署；
+  - 复杂手势识别；
+  - 多设备适配；
+  - 生产级错误恢复；
+  - 完整离线 PWA；
+  - iOS 版本。
+
+  ---
+
+  3. 用户画像
+
+  3.1 儿童 / 培智学生 / 自闭症人士
+
+  {
+    "persona": "child",
+    "fontScale": 1.15,
+    "speakRate": 0.85,
+    "tapTolerance": 28,
+    "autoReplay": true,
+    "explainWhy": false,
+    "rewardStyle": "playful"
+  }
+
+  话术特点：
+
+  - 短句；
+  - 少于 12 个字；
+  - 不使用复杂术语；
+  - 鼓励频繁；
+  - 使用颜色、形状和位置描述；
+  - 使用撒花、鼓掌、笑脸等反馈。
+
+  示例：
+
+  找到绿色电话。
+  点一下。
+  你做对啦！
+
+  3.2 老人 / 数字新手
+
+  {
+    "persona": "senior",
+    "fontScale": 1.45,
+    "speakRate": 0.8,
+    "tapTolerance": 36,
+    "autoReplay": true,
+    "explainWhy": true,
+    "rewardStyle": "practical"
+  }
+
+  话术特点：
+
+  - 尊重、平等；
+  - 不使用幼儿化称呼；
+  - 解释操作原因；
+  - 语速较慢；
+  - 字号更大；
+  - 目标区域更容易点击；
+  - 使用“已经学会”“可以再试一次”等反馈。
+
+  示例：
+
+  请点击绿色的电话图标。
+  点击后会打开拨号页面。
+
+  ▎ 老人模式的容错只扩大逻辑命中区域，不改变仿真界面元素的视觉位置，避免形成错误的空间认知。
+
+  ---
+
+  4. 比赛版核心演示场景
+
+  场景一：认识电话图标
+
+  展示能力：
+
+  - 儿童模式；
+  - 图标识别；
+  - 单步引导；
+  - 点错反馈；
+  - 正确反馈动画。
+
+  流程：
+
+  显示多个图标
+    ↓
+  找到绿色电话图标
+    ↓
+  点击电话图标
+    ↓
+  显示成功动画
+
+  儿童话术：
+
+  找到绿色电话。
+
+  老人话术：
+
+  请点击绿色的电话图标。
+  这是拨打电话的入口。
+
+  ---
+
+  场景二：打开 Wi-Fi
+
+  展示能力：
+
+  - 老人模式；
+  - 多步骤任务；
+  - seniorWhy；
+  - 字号放大；
+  - 多页面仿真；
+  - AI 动态生成课程。
+
+  流程：
+
+  点击设置
+    ↓
+  点击 Wi-Fi
+    ↓
+  点击家庭网络
+    ↓
+  显示连接成功
+
+  ---
+
+  场景三：调大手机字体
+
+  展示能力：
+
+  - 老人急救箱；
+  - 从真实问题生成解决方案；
+  - 仿真设置界面；
+  - 滑动操作；
+  - 完成后显示效果变化。
+
+  流程：
+
+  点击设置
+    ↓
+  点击显示
+    ↓
+  点击字体大小
+    ↓
+  向右拖动滑块
+    ↓
+  显示字体已变大
+
+  ---
+
+  5. 技术架构
+
+  比赛版采用轻量 React 架构：
+
+  React UI
+    ├── HomePage
+    ├── GeneratePage
+    ├── PracticePage
+    └── ResultPage
           ↓
-TypeScript Core（纯逻辑，无 DOM 依赖）
+  CourseStore
           ↓
-PWA 离线资源
+  LLM Service
           ↓
-Capacitor Android
+  Course JSON
           ↓
-Android APK
-```
-
-### 技术选型
-
-- UI：React 18/19 + TypeScript
-- 构建：Vite
-- 路由：React Router
-- 状态：Zustand；核心练习状态仍由纯 TypeScript `GuideEngine` 管理
-- 样式：普通 CSS Modules 或分层 CSS，不依赖在线 CDN
-- 数据校验：自定义严格校验器；必要时使用 Zod，但运行时必须保留语义校验
-- 测试：Vitest + Testing Library；关键流程使用 Playwright
-- 本地存储：IndexedDB，localStorage 只保存小型设置
-- Android：Capacitor
-- 语音：浏览器 SpeechSynthesis 作为基础能力；Capacitor 原生 TTS 插件作为 Android 增强和离线 fallback
-- 文件选择：HTML File API；Android 通过 Capacitor Filesystem/实现插件增强
-- 图像显示：`img` + SVG overlay；synthetic 界面使用 DOM/CSS，复杂绘制才使用 Canvas
-
-## 3. 目录结构
-
-```text
-smartbridge-web/
-├─ package.json
-├─ tsconfig.json
-├─ vite.config.ts
-├─ capacitor.config.ts
-├─ index.html
-├─ public/
-│  ├─ scenes/
-│  │  ├─ l1-phone.json
-│  │  ├─ l1-wechat.json
-│  │  └─ ...
-│  ├─ images/
-│  ├─ characters/
-│  └─ fonts/
-├─ src/
-│  ├─ main.tsx
-│  ├─ App.tsx
-│  ├─ app/
-│  │  ├─ routes.tsx
-│  │  ├─ AppShell.tsx
-│  │  ├─ appStore.ts
-│  │  └─ errorBoundary.tsx
-│  ├─ core/
-│  │  ├─ models.ts
-│  │  ├─ defaults.ts
-│  │  ├─ sceneValidator.ts
-│  │  ├─ guideEngine.ts
-│  │  ├─ gestureMatcher.ts
-│  │  ├─ promptLadder.ts
-│  │  ├─ progressTracker.ts
-│  │  ├─ simulationReducer.ts
-│  │  ├─ clock.ts
-│  │  └─ coreErrors.ts
-│  ├─ data/
-│  │  ├─ builtinSceneRepository.ts
-│  │  ├─ generatedSceneRepository.ts
-│  │  ├─ profileStore.ts
-│  │  ├─ progressStore.ts
-│  │  ├─ manifestStore.ts
-│  │  └─ indexedDb.ts
-│  ├─ services/
-│  │  ├─ speechService.ts
-│  │  ├─ nativeTtsService.ts
-│  │  ├─ screenshotService.ts
-│  │  ├─ sceneGenerationClient.ts
-│  │  └─ shareService.ts
-│  ├─ stores/
-│  │  ├─ profileStore.ts
-│  │  ├─ catalogStore.ts
-│  │  ├─ practiceStore.ts
-│  │  └─ reportStore.ts
-│  ├─ components/
-│  │  ├─ BrandHeader.tsx
-│  │  ├─ PersonaSwitcher.tsx
-│  │  ├─ CourseCard.tsx
-│  │  ├─ CourseSection.tsx
-│  │  ├─ PracticeSurface.tsx
-│  │  ├─ ImageScreen.tsx
-│  │  ├─ SyntheticScreen.tsx
-│  │  ├─ HotspotOverlay.tsx
-│  │  ├─ PromptPanel.tsx
-│  │  ├─ CharacterPanel.tsx
-│  │  ├─ ActionBar.tsx
-│  │  ├─ ReviewBadge.tsx
-│  │  ├─ EmptyState.tsx
-│  │  └─ ConfirmDialog.tsx
-│  ├─ pages/
-│  │  ├─ WelcomePage.tsx
-│  │  ├─ HomePage.tsx
-│  │  ├─ CourseCatalogPage.tsx
-│  │  ├─ PracticePage.tsx
-│  │  ├─ ResultPage.tsx
-│  │  ├─ ReviewPage.tsx
-│  │  ├─ GeneratorPage.tsx
-│  │  └─ TeacherPreviewPage.tsx
-│  ├─ styles/
-│  │  ├─ tokens.css
-│  │  ├─ global.css
-│  │  ├─ layout.css
-│  │  ├─ components.css
-│  │  └─ accessibility.css
-│  └─ test/
-│     ├─ setup.ts
-│     ├─ fixtures.ts
-│     └─ helpers.ts
-├─ tests/
-│  ├─ core/
-│  │  ├─ sceneValidator.test.ts
-│  │  ├─ guideEngine.test.ts
-│  │  ├─ gestureMatcher.test.ts
-│  │  ├─ promptLadder.test.ts
-│  │  └─ progressTracker.test.ts
-│  ├─ ui/
-│  │  ├─ HomePage.test.tsx
-│  │  ├─ CourseCatalogPage.test.tsx
-│  │  ├─ PracticePage.test.tsx
-│  │  └─ TeacherPreviewPage.test.tsx
-│  └─ e2e/
-│     ├─ onboarding.spec.ts
-│     ├─ practice.spec.ts
-│     └─ responsive.spec.ts
-├─ scripts/
-│  ├─ validate-scenes.ts
-│  ├─ copy-assets.ts
-│  └─ build-android.ps1
-└─ docs/
-   ├─ WEB-ARCHITECTURE.md
-   ├─ DSL.md
-   ├─ OFFLINE.md
-   └─ P0-ACCEPTANCE.md
-```
-
-## 4. 核心领域模型
-
-### 4.1 画像
-
-```ts
-export type Persona = 'child' | 'senior'
-
-export interface LearnerProfile {
-  persona: Persona
-  fontScale: number
-  speakRate: number
-  tapToleranceDp: number
-  autoReplay: boolean
-  explainWhy: boolean
-  celebrationEnabled: boolean
-}
-```
-
-默认值：
-
-- child：字号 1.0、语速 0.9、容错 24dp、短句、高频鼓励；
-- senior：字号 1.4、语速 0.9、容错 36dp、解释原因、克制反馈。
-
-容错只用于逻辑命中，不改变仿真界面的视觉位置和尺寸。
-
-### 4.2 DSL
-
-```ts
-export type AtomicAction =
-  | 'observe'
-  | 'tap'
-  | 'long_press'
-  | 'swipe'
-  | 'type_char'
-  | 'wait'
-
-export type ExecutionMode =
-  | 'simulation'
-  | 'screenshot_guide'
-  | 'live_settings_guide'
-
-export interface Scene {
-  schemaVersion: 1
-  id: string
-  title: string
-  level: 'L0' | 'L1' | 'L2' | 'L3' | 'L4'
-  domain: string
-  executionMode: Exclude<ExecutionMode, 'live_settings_guide'>
-  sandbox: true
-  screen: ScreenDefinition
-  phases: Phase[]
-}
-
-export interface Phase {
-  id: string
-  title: string
-  screen?: ScreenDefinition
-  steps: Step[]
-}
-
-export interface Step {
-  id: string
-  action: AtomicAction
-  targetId?: string
-  inputId?: string
-  character?: string
-  durationMs?: number
-  from?: Point
-  to?: Point
-  waitMs?: number
-  say: SayText
-  prompts: PromptRule[]
-}
-
-export interface SayText {
-  child: string
-  senior: string
-  seniorWhy?: string
-}
-
-export interface Point { x: number; y: number }
-export interface Rect { x: number; y: number; width: number; height: number }
-
-export interface ScreenElement {
-  id: string
-  kind: string
-  text?: string
-  icon?: string
-  color?: string
-  bounds: Rect
-  interactive: boolean
-}
-
-export interface ScreenDefinition {
-  type: 'image' | 'synthetic'
-  src?: string
-  style?: 'kiosk' | 'atm' | 'pos' | 'app_light' | 'app_dark'
-  elements: ScreenElement[]
-}
-```
-
-所有坐标统一使用 0 到 1 的归一化值。渲染层负责将其映射到内容矩形，不能直接把屏幕像素当成归一化坐标。
-
-## 5. 核心模块设计
-
-### 5.1 `sceneValidator.ts`
-
-校验分为三层：
-
-1. JSON 结构校验；
-2. 类型和枚举校验；
-3. 语义安全校验。
-
-必须拒绝：
-
-- 未知动作、未知屏幕样式、未知字段；
-- 越界、负数、NaN、Infinity 坐标；
-- image 的 URL、绝对路径、目录穿越；
-- 交互目标不存在或 `interactive=false`；
-- `type_char` 不是单个 Unicode grapheme；
-- child 话术超过 12 个感知字符；
-- “然后、接着、下一步、随后、之后”等拆分红线；
-- 脚本、工具调用、提示注入文本；
-- 非沙盒场景；
-- L4 真实系统自动执行定义；
-- 不完整的辅助规则。
-
-校验器返回结构化问题，不允许页面因非法场景崩溃。
-
-### 5.2 `guideEngine.ts`
-
-状态：
-
-```ts
-export type GuideState =
-  | 'idle'
-  | 'greeting'
-  | 'presenting_step'
-  | 'turn_cue'
-  | 'awaiting_action'
-  | 'applying_prompt'
-  | 'feedback'
-  | 'paused'
-  | 'completed'
-  | 'need_human_help'
-  | 'aborted'
-```
-
-事件必须携带当前步骤的 `stepRunId`，异步语音、动画和计时回调必须携带 `operationId`。旧步骤回调不得推进新步骤。
-
-状态机要求：
-
-- `observe` 通过展示时间或“我准备好了”完成，结果为 `ExposureCompleted`；
-- `wait` 只通过模拟等待条件完成；
-- tap、长按、滑动、虚拟键输入分别匹配；
-- 错误操作不会造成真实副作用；
-- 仿真场景最高辅助档可自动完成并标记待复习；
-- screenshot guide 最高辅助档进入 `need_human_help`，不得自动操作真实手机；
-- 暂停时冻结活动计时，恢复不能补算暂停期间；
-- 步骤推进前取消上一条 TTS、动画和定时器。
-
-核心 API：
-
-```ts
-export interface GuideEngine {
-  snapshot(): GuideSnapshot
-  dispatch(event: GuideEvent): TransitionResult
-  currentStep(): Step
-  currentScreen(): ScreenDefinition
-  exportSession(): SessionResult
-}
-```
-
-### 5.3 `gestureMatcher.ts`
-
-支持：
-
-- tap：精确命中优先，老人容错区作为第二层；
-- long_press：检查目标和持续时间；
-- swipe：检查起点、方向、距离和终点；
-- type_char：只接受一个虚拟键和一个字符；不调用真实键盘；
-- observe / wait：拒绝触摸伪完成。
-
-邻近热点重叠时，精确命中优先；模糊命中不能把邻键判定为正确。
-
-### 5.4 `progressTracker.ts`
-
-记录：
-
-```ts
-export interface StepAttempt {
-  sessionId: string
-  stepRunId: string
-  stepId: string
-  sceneVersion: number
-  outcome:
-    | 'IndependentSuccess'
-    | 'PromptedSuccess'
-    | 'AutoCompleted'
-    | 'ExposureCompleted'
-    | 'Aborted'
-  wrongCount: number
-  usedPromptIds: string[]
-  maxPromptLevel: number
-  activeElapsedMs: number
-  firstAttemptCorrect: boolean
-}
-```
-
-只有不同 session 中完整练习得到的连续三次独立成功才能计为掌握。自动完成、提示完成、observe 和 wait 均不能伪装为独立掌握。
-
-### 5.5 `simulationReducer.ts`
-
-所有仿真副作用必须是白名单效果：
-
-```ts
-export type SimulationEffect =
-  | { type: 'append_char'; inputId: string; character: string }
-  | { type: 'set_flag'; key: string; value: boolean }
-  | { type: 'show_screen'; screenId: string }
-```
-
-禁止从 DSL 执行 URL、JavaScript、系统命令、真实拨号、真实支付和任意代码。
-
-## 6. 数据和审核架构
-
-### 6.1 内置场景
-
-内置场景位于 `public/scenes`，构建时打包进前端，默认离线可用。
-
-首版冻结：
-
-- L1 图标认知 5 个：电话、微信、相机、设置、Wi-Fi；
-- L2 操作 8 个：解锁、拨号、接听、挂断、微信长按发语音、调音量、手电筒、拍照；
-- L4 急救箱 4 个：字体太小、声音问题、连接 Wi-Fi、诈骗识别。
-
-### 6.2 生成场景
-
-生成流程：
-
-```text
-截图或文字描述
-  ↓
-SceneDraft JSON
-  ↓
-严格结构与语义校验
-  ↓
-老师预览试玩
-  ↓
-输入审核人
-  ↓
-计算 ContentHash
-  ↓
-保存 ScenePackageManifest
-  ↓
-进入已审核场景列表
-```
-
-LLM 输出不得包含审核字段。审核信息单独存储：
-
-```ts
-interface ScenePackageManifest {
-  sceneId: string
-  contentHash: string
-  reviewedHash: string
-  reviewStatus: 'draft' | 'approved' | 'rejected'
-  reviewerId: string
-  reviewedAt?: string
-}
-```
-
-内容 hash 变化后自动回到 draft。未经审核的场景不可进入学员课程目录。
-
-## 7. 页面架构
-
-### 7.1 首页
-
-首页必须是有限高度的 App Shell，主体内容放在唯一的滚动容器中，禁止页面整体和子页面同时产生无意义滚动。
-
-结构：
-
-```text
-固定顶部栏
-  - 品牌：智触心桥 SmartBridge
-  - 当前画像
-  - 设置入口
-
-滚动主体
-  - 欢迎卡片
-  - 继续练习卡片
-  - 今日待复习
-  - L1 图标认知
-  - L2 软件操作
-  - L4 老人急救箱
-  - 老师工具入口
-
-固定底部导航
-  - 首页
-  - 课程
-  - 复习
-  - 设置
-```
-
-课程卡片使用分组、标签和短描述，不再将所有课程直接堆成一列巨大按钮。
-
-### 7.2 课程目录页
-
-- 按等级和生活域分组；
-- 卡片显示标题、级别、完成状态、是否待复习；
-- 老人模式自动增大字号和间距；
-- 课程列表自身可滚动，但页面不能出现横向滚动；
-- 使用语义化按钮和 `aria-label`。
-
-### 7.3 练习页
-
-结构：
-
-```text
-练习页顶部：返回、课程标题、步骤进度
-安全提示条：练习模式，不会真实拨号/付款/修改设置
-主练习区：截图或 synthetic 仿真屏幕
-热点层：SVG 高亮、箭头、遮罩、小手动画
-引导卡：当前唯一任务和双 persona 话术
-角色区：说话状态、表情、重播
-操作栏：重播、我不明白、暂停、退出
-```
-
-主练习区使用 `aspect-ratio` 和内容矩形映射，不能依赖固定 Android 像素。
-
-### 7.4 老人模式
-
-通过根节点属性和 CSS 变量控制：
-
-```css
-[data-persona='senior'] {
-  --font-scale: 1.4;
-  --button-min-height: 72px;
-  --card-gap: 18px;
-  --focus-ring-width: 4px;
-}
-```
-
-老人模式不使用幼稚动画，显示尊重、平等、解释原因的文本。
-
-### 7.5 老师预览页
-
-- 显示场景草稿状态；
-- 显示当前截图或 synthetic 界面；
-- 显示每一步的动作、目标和双 persona 话术；
-- 支持试玩；
-- 明确显示“未审核，不会进入学员课程”；
-- 审核人填写后才能保存；
-- 保存后显示 hash 和审核时间。
-
-## 8. 离线和 Android 方案
-
-### P0 离线要求
-
-- 首屏、内置课程、核心状态机、进度记录不依赖网络；
-- 所有 JS、CSS、字体、课程 JSON 和必要图片都打包进 APK；
-- 不使用外部 CDN；
-- TTS 不可用时仍显示完整文字；
-- 生成器网络失败不影响预制课程；
-- IndexedDB 损坏时恢复默认画像并保留错误提示。
-
-### Capacitor
-
-初期只使用 Capacitor 的通用能力：
-
-- Android APK 打包；
-- 状态栏与返回键适配；
-- 文件选择；
-- 系统分享；
-- 原生 TTS 增强。
-
-暂不实现：
-
-- AccessibilityService；
-- 自动修改真实系统设置；
-- 真实拨号与支付；
-- 相机识别和录音识别。
-
-## 9. 分阶段实施
-
-### Phase 0：新 Web 工程基线
-
-- 初始化 Vite React TypeScript；
-- 配置严格 TypeScript；
-- 配置 ESLint、Prettier、Vitest；
-- 配置离线构建；
-- 配置 Capacitor Android；
-- 删除旧 Android UI 对新主线的依赖。
-
-验收：浏览器可启动，Android 壳可构建，离线刷新可加载。
-
-### Phase 1：TypeScript Core
-
-- 完成 models；
-- 完成 sceneValidator；
-- 完成 gestureMatcher；
-- 完成 promptLadder；
-- 完成 guideEngine；
-- 完成 progressTracker；
-- 完成 simulationReducer；
-- 为每个模块编写 Vitest 测试。
-
-验收：核心测试覆盖正常、错误、超时、暂停、恢复、三次自动完成、L4 人工帮助、多屏和进度掌握。
-
-### Phase 2：全新首页和课程目录
-
-- 完成 AppShell；
-- 完成首页分区布局；
-- 完成课程卡片；
-- 完成画像切换；
-- 完成复习入口；
-- 完成响应式和大字号适配。
-
-验收：小屏、普通手机、平板宽度下无裁切、无横向滚动、课程内容可滚动。
-
-### Phase 3：练习闭环
-
-- 完成 PracticeSurface；
-- 完成 ImageScreen；
-- 完成 SyntheticScreen；
-- 完成 SVG 热点层；
-- 完成 tap、long press、swipe、type_char；
-- 完成 observe、wait；
-- 完成重播、帮助、暂停、完成反馈；
-- 接入 SpeechSynthesis / 原生 TTS。
-
-验收：至少三种课程跑通，六种动作均可测试，错误不会造成真实副作用。
-
-### Phase 4：场景数据迁移
-
-- 将 17 个内置课程迁移为 JSON；
-- 建立场景构建时校验脚本；
-- 资源路径校验；
-- 预制课程版本管理；
-- 将所有课程从代码常量迁移到 repository。
-
-验收：断网打开 App 可浏览和练习全部内置课程。
-
-### Phase 5：进度、复习和老师工具
-
-- 完成 IndexedDB 存储；
-- 完成会话和步骤记录；
-- 完成待复习排序；
-- 完成学习报告；
-- 完成截图选择；
-- 完成草稿预览；
-- 完成人工审核和 manifest 保存。
-
-验收：关闭、重新打开、修改内容 hash 后，状态和审核边界正确。
-
-### Phase 6：Android 打包和验证
-
-- Capacitor 同步 Android；
-- 构建 debug APK；
-- 构建 release APK；
-- 在至少一个 Android ARM64 设备验证；
-- 验证返回键、状态恢复、横竖屏策略、TTS、文件选择。
-
-## 10. 测试策略
-
-### Core 单元测试
-
-必须覆盖：
-
-- 画像默认值和话术选择；
-- child 话术 12 字限制；
-- 非法坐标和未知动作；
-- URL、绝对路径、目录穿越拦截；
-- 当前屏目标校验；
-- 邻近热点精确命中优先；
-- 长按时长；
-- 滑动方向和距离；
-- 单字符虚拟键；
-- observe/wait 暴露完成；
-- 10 秒超时辅助；
-- 错误 1、2、3 档；
-- screenshot guide 不自动完成；
-- pause/resume 活动计时；
-- 旧 operationId 不推进状态；
-- 三个不同 session 的独立成功掌握；
-- 自动完成不计独立成功；
-- manifest hash 变化回到 draft。
-
-### UI 测试
-
-- 首页可滚动且没有横向溢出；
-- 课程分组正确；
-- 儿童/老人视觉参数变化正确；
-- 练习页始终只显示一个当前任务；
-- 错误提示和高亮显示正确；
-- 完成页显示待复习状态；
-- 草稿不可直接进入学员课程。
-
-### E2E 测试
-
-至少完成：
-
-1. 首次启动选择儿童模式；
-2. 选择 L1 电话图标课并完成；
-3. 错误三次后显示复习标记；
-4. 切换老人模式后字号和话术改变；
-5. 选择截图进入老师预览；
-6. 未审核草稿不可运行；
-7. 刷新后画像和进度保留；
-8. 断网仍可启动和完成预制课。
-
-## 11. 不迁移的旧实现
-
-以下 C# Android 实现不再作为 Web 主线依赖：
-
-- `MainActivity` 的旧布局；
-- Android Canvas 练习画布；
-- 原生 UI 中的课程列表；
-- C# `GuideEngine` 的旧 API；
-- C# 内嵌课程常量。
-
-C# 工程可以保留作为历史参考，但新的 Web 架构不能通过 WebView 反向调用它，也不能为了复用旧代码引入本地后端。
-
-## 12. 完成标准
-
-只有同时满足以下条件，才称为 Web 重构完成：
-
-- 主线代码全部为 TypeScript/React；
-- 浏览器开发模式和生产构建均成功；
-- 离线模式可以启动；
-- 首页不再出现裁切、巨大空白和横向溢出；
-- 17 个内置场景可从 JSON 加载；
-- 六种原子动作有可测试实现；
-- 两种画像实际改变字号、话术、辅助和奖励；
-- 本地进度在刷新和重启后保留；
-- 非法场景被拦截；
-- 生成草稿必须人工审核后才能保存；
-- Capacitor Android APK 可以构建；
-- 完成 Core、UI、E2E 测试；
-- 文档明确 P0/P1 边界，不虚报真实系统设置自动化能力。
-
-## 13. 首次实施顺序
-
-严格按以下顺序执行：
-
-1. 新建 Web 工程；
-2. 写 TypeScript models；
-3. 写 Core 单元测试；
-4. 实现 validator 和 gesture matcher；
-5. 实现 guide engine 和 progress tracker；
-6. 用三个最小 JSON 场景验证 Core；
-7. 实现新的首页；
-8. 实现课程目录；
-9. 实现练习页；
-10. 迁移 17 个课程 JSON；
-11. 实现 IndexedDB；
-12. 实现老师预览和审核；
-13. 接入 TTS；
-14. 配置 PWA；
-15. 配置 Capacitor；
-16. 构建并验证 APK；
-17. 最后再实现 P1 的联网场景生成和 Android 专用能力。
-
-**核心原则：先让 Web 版本的离线预制课程、首页和练习闭环真正可用，再接入任何 LLM 或复杂 Android 能力。**
+  Synthetic Renderer
+          ↓
+  Simple Guide Engine
+
+  5.1 技术栈
+
+  - React；
+  - TypeScript；
+  - Vite；
+  - Zustand 或 React Context；
+  - CSS；
+  - 可选 Framer Motion；
+  - 浏览器 SpeechSynthesis；
+  - LLM API；
+  - 本地 fallback JSON。
+
+  5.2 目录结构
+
+  src/
+  ├── App.tsx
+  ├── types.ts
+  ├── data/
+  │   └── demoCourses.ts
+  ├── components/
+  │   ├── PersonaSelector.tsx
+  │   ├── CourseInput.tsx
+  │   ├── SyntheticScreen.tsx
+  │   ├── GuidePrompt.tsx
+  │   ├── Character.tsx
+  │   ├── ActionButton.tsx
+  │   └── ResultCard.tsx
+  ├── pages/
+  │   ├── HomePage.tsx
+  │   ├── GeneratePage.tsx
+  │   ├── PracticePage.tsx
+  │   └── ResultPage.tsx
+  ├── services/
+  │   ├── llmService.ts
+  │   └── speechService.ts
+  ├── store/
+  │   └── courseStore.ts
+  └── styles/
+      └── global.css
+
+  ---
+
+  6. 核心数据模型
+
+  6.1 课程
+
+  export interface Course {
+    id: string
+    title: string
+    category: 'icon' | 'phone' | 'senior-help'
+    persona: 'child' | 'senior'
+    description: string
+    steps: CourseStep[]
+  }
+
+  6.2 课程步骤
+
+  export interface CourseStep {
+    id: string
+    prompt: {
+      child: string
+      senior: string
+    }
+    why?: string
+    screen: SimulatedScreen
+    action: Action
+  }
+
+  6.3 原子动作
+
+  export type Action =
+    | {
+        type: 'tap'
+        targetId: string
+      }
+    | {
+        type: 'long_press'
+        targetId: string
+        duration: number
+      }
+    | {
+        type: 'swipe'
+        direction: 'up' | 'down' | 'left' | 'right'
+        targetId?: string
+      }
+
+  6.4 仿真页面
+
+  export interface SimulatedScreen {
+    title: string
+    elements: SimulatedElement[]
+  }
+
+  6.5 仿真元素
+
+  export type SimulatedElement =
+    | {
+        type: 'icon'
+        id: string
+        label: string
+        icon: string
+      }
+    | {
+        type: 'button'
+        id: string
+        label: string
+      }
+    | {
+        type: 'text'
+        id: string
+        value: string
+      }
+    | {
+        type: 'toggle'
+        id: string
+        label: string
+        enabled: boolean
+      }
+    | {
+        type: 'slider'
+        id: string
+        label: string
+        value: number
+      }
+
+  ---
+
+  7. LLM 生成协议
+
+  7.1 用户输入
+
+  教我把手机字体调大
+
+  7.2 LLM 输出
+
+  {
+    "title": "调大手机字体",
+    "category": "senior-help",
+    "steps": [
+      {
+        "id": "step-1",
+        "prompt": {
+          "child": "找到设置。",
+          "senior": "请点击设置图标。"
+        },
+        "why": "设置里可以调整手机功能。",
+        "screen": {
+          "title": "手机桌面",
+          "elements": [
+            {
+              "type": "icon",
+              "id": "settings",
+              "label": "设置",
+              "icon": "gear"
+            }
+          ]
+        },
+        "action": {
+          "type": "tap",
+          "targetId": "settings"
+        }
+      }
+    ]
+  }
+
+  7.3 LLM 规则
+
+  LLM 只能生成白名单内容：
+
+  const allowedActions = [
+    'tap',
+    'long_press',
+    'swipe'
+  ]
+
+  const allowedElementTypes = [
+    'icon',
+    'button',
+    'text',
+    'toggle',
+    'slider'
+  ]
+
+  禁止生成：
+
+  - JavaScript；
+  - HTML；
+  - React 代码；
+  - URL；
+  - 文件路径；
+  - 系统命令；
+  - Android API；
+  - 真实拨号；
+  - 真实支付；
+  - 真实系统设置修改；
+  - 任意函数调用。
+
+  7.4 生成失败处理
+
+  调用 LLM
+    ↓
+  JSON 解析
+    ↓
+  简单白名单校验
+    ↓
+  成功：进入练习
+  失败：加载本地 fallback
+
+  比赛现场必须保证：
+
+  - LLM 无响应时仍可演示；
+  - 网络延迟时显示生成动画；
+  - JSON 解析失败时自动切换示例课程；
+  - 不因 API 失败导致白屏。
+
+  ---
+
+  8. 引导状态机
+
+  比赛版使用简化状态机：
+
+  type PracticeState =
+    | 'idle'
+    | 'speaking'
+    | 'waiting'
+    | 'success'
+    | 'error'
+    | 'completed'
+
+  流程：
+
+  idle
+    ↓
+  speaking
+    ↓
+  waiting
+    ↓
+  用户操作
+    ├── 正确 → success → 下一步
+    └── 错误 → error → 重播提示
+
+  错误反馈：
+
+  第一次错误
+
+  没关系，再找一次。
+
+  同时：
+
+  - 目标闪烁；
+  - 重播语音。
+
+  第二次错误
+
+  看这里，这个按钮可以点击。
+
+  同时：
+
+  - 目标高亮；
+  - 其他元素降低透明度；
+  - 显示箭头。
+
+  第三次错误
+
+  比赛版不要求自动完成真实操作。
+
+  统一显示：
+
+  我们一起完成了这一步。
+  这一步可以再练习一次。
+
+  然后：
+
+  - 进入下一步；
+  - 在结果页显示“建议复习”。
+
+  ---
+
+  9. 仿真界面设计
+
+  仿真页面使用 DOM/CSS，不使用 Canvas 作为主要渲染方式。
+
+  原因：
+
+  - 更容易放大字号；
+  - 更容易绑定点击事件；
+  - 更容易实现响应式；
+  - 更容易实现高亮；
+  - 更容易测试；
+  - 更适合老人模式。
+
+  结构：
+
+  SyntheticScreen
+  ├── StatusBar
+  ├── ScreenHeader
+  ├── ElementGrid
+  ├── TargetHighlight
+  ├── HandPointer
+  └── ErrorOverlay
+
+  每个可交互元素必须具备：
+
+  - 唯一 id；
+  - 可见标签；
+  - 点击事件；
+  - 当前目标状态；
+  - 错误反馈状态。
+
+  ---
+
+  10. 页面设计
+
+  10.1 首页
+
+  首页重点是快速进入体验。
+
+  小引导
+
+  让数字生活变简单
+
+  请选择你的练习方式：
+
+  [儿童 / 学生]
+  [老人 / 数字新手]
+
+  你想学习什么？
+
+  [教我打开 Wi-Fi]
+  [教我拨打电话]
+  [教我调大字体]
+
+  [输入自己的问题]
+
+  10.2 生成页
+
+  展示 AI 工作过程：
+
+  正在理解你的问题……
+  正在拆成小步骤……
+  正在准备练习界面……
+
+  生成时间过长时，显示：
+
+  你也可以先试试“打开 Wi-Fi”
+
+  10.3 练习页
+
+  练习页始终只展示一个当前目标：
+
+  角色
+  当前提示
+  仿真手机
+  错误提示
+  重播按钮
+
+  不要同时显示多个操作目标。
+
+  10.4 完成页
+
+  太棒了！
+
+  你完成了：
+  连接 Wi-Fi
+
+  你学会了：
+
+  ✓ 找到设置
+  ✓ 打开 Wi-Fi
+  ✓ 选择家庭网络
+
+  [再练一次]
+  [学习新的事情]
+
+  ---
+
+  11. 比赛版实施顺序
+
+  Phase 0：工程初始化
+
+  - 创建 Vite React TypeScript 工程；
+  - 配置基础 CSS；
+  - 创建页面路由或页面状态；
+  - 创建基础数据模型；
+  - 创建三个 fallback 课程。
+
+  验收：
+
+  - npm install 成功；
+  - npm run dev 成功；
+  - 首页可以打开；
+  - 可以切换画像。
+
+  Phase 1：本地课程闭环
+
+  - 实现 SyntheticScreen；
+  - 实现目标元素点击；
+  - 实现正确反馈；
+  - 实现错误反馈；
+  - 实现下一步；
+  - 实现完成页。
+
+  验收：
+
+  首页
+  → 选择画像
+  → 选择课程
+  → 进入练习
+  → 点击目标
+  → 完成课程
+
+  Phase 2：视觉和动画
+
+  - 手机外壳；
+  - 目标高亮；
+  - 手指点击动画；
+  - 角色表情；
+  - 撒花动画；
+  - 老人模式字号；
+  - 进度条；
+  - 页面切换动画。
+
+  验收：
+
+  - 首次演示具有明显视觉效果；
+  - 儿童模式和老人模式有明显区别；
+  - 仿真页面不出现空白主体。
+
+  Phase 3：LLM 接入
+
+  - 增加自然语言输入；
+  - 编写 LLM Prompt；
+  - 接收课程 JSON；
+  - 解析和白名单校验；
+  - 生成失败 fallback；
+  - 动态生成课程；
+  - 动态生成话术。
+
+  验收：
+
+  输入：
+
+  教我把手机字体调大
+
+  能够生成并开始练习。
+
+  Phase 4：语音和演示优化
+
+  - 接入 SpeechSynthesis；
+  - 增加重播；
+  - 增加“正在思考”状态；
+  - 增加错误温柔提示；
+  - 增加示例任务；
+  - 优化移动端布局；
+  - 准备固定演示路径。
+
+  Phase 5：比赛准备
+
+  - 固定三分钟演示流程；
+  - 准备无网络 fallback；
+  - 准备 LLM 失败 fallback；
+  - 检查首屏加载；
+  - 检查移动端显示；
+  - 确认没有真实拨号、支付或设置修改；
+  - 准备产品价值说明。
+
+  ---
+
+  12. 比赛验收标准
+
+  满足以下条件即可视为 MVP 完成：
+
+  - Web App 可以启动；
+  - 首页可以展示产品定位；
+  - 用户可以选择儿童或老人模式；
+  - 两种模式字号和话术明显不同；
+  - 用户可以输入自然语言任务；
+  - LLM 可以返回课程 JSON；
+  - 课程 JSON 可以生成仿真页面；
+  - 仿真页面支持至少三种动作；
+  - 用户点错不会产生真实副作用；
+  - 用户点对可以进入下一步；
+  - 至少三个课程可以完成；
+  - 至少一个课程由 LLM 即时生成；
+  - 有文字或语音引导；
+  - 有错误反馈；
+  - 有完成反馈；
+  - LLM 失败时可以使用本地课程继续演示；
+  - 移动端页面无明显横向溢出；
+  - 演示过程中不会进入真实系统设置；
+  - 不会真实拨号、支付或发送消息。
+
+  ---
+
+  13. 比赛演示脚本
+
+  第一步：介绍痛点
+
+  很多人不是不会使用手机，而是不敢点。
+  因为他们不知道点错之后会发生什么。
+
+  第二步：选择老人模式
+
+  展示：
+
+  - 字号放大；
+  - 话术变化；
+  - 解释为什么。
+
+  第三步：输入自然语言
+
+  手机字体太小，教我怎么调大。
+
+  第四步：展示 AI 生成
+
+  AI 正在理解问题……
+  AI 正在拆分步骤……
+  AI 正在生成仿真手机界面……
+
+  第五步：开始练习
+
+  AI 引导：
+
+  请点击设置图标。
+  点击后，我们才能找到字体设置。
+
+  用户故意点错：
+
+  没关系，请再找一次。
+
+  用户点对后进入下一步。
+
+  第六步：展示完成结果
+
+  你已经完成了字体调大练习。
+  刚才的操作不会改变真实手机。
+  你可以放心反复练习。
+
+  第七步：总结差异化
+
+  小引导不是告诉用户应该做什么，
+  而是让用户在没有风险的环境里，
+  真正练会怎么做。
+
+  ---
+
+  14. 最终比赛策略
+
+  比赛版优先级：
+
+  AI 生成能力
+  > 完整演示闭环
+  > 交互和视觉效果
+  > 画像差异
+  > 语音反馈
+  > 场景数量
+  > 工程完整性
+  > 稳定性
+
+  第一目标不是构建完整产品，而是尽快完成：
+
+  一句话
+  → AI 生成
+  → 仿真界面
+  → 一步一步练习
+  → 安全完成
+
+  所有暂时未完成的能力都必须明确标记为后续版本，不影响 MVP 演示。

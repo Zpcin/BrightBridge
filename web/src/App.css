@@ -1,0 +1,125 @@
+:root {
+  --ink: #1d2b36;
+  --sub: #5f7482;
+  --brand: #0e7c86;
+  --brand-2: #0aa2a0;
+  --amber: #e8a13c;
+  --bg: #f4f8fa;
+  --card: #ffffff;
+  --line: #dfe9ee;
+  --danger: #e2604f;
+  --radius: 18px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin: 0; font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--ink); }
+button { font-family: inherit; cursor: pointer; }
+button:active { transform: scale(.97); }
+
+main { min-height: 100vh; display: flex; flex-direction: column; }
+
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 26px; background: var(--card); border-bottom: 1px solid var(--line);
+}
+header b { font-size: 21px; color: var(--brand); }
+header b span { color: var(--sub); font-weight: 500; font-size: 15px; margin-left: 4px; }
+header small { color: var(--sub); font-size: 13px; }
+
+.page { flex: 1; width: min(560px, 100%); margin: 0 auto; padding: 34px 20px 46px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+
+.eyebrow { color: var(--brand-2); font-weight: 700; letter-spacing: 1px; font-size: 14px; margin: 0; }
+h1 { font-size: clamp(26px, 6vw, 40px); line-height: 1.25; margin: 14px 0 6px; font-weight: 800; }
+h1 em { font-style: normal; color: var(--brand-2); }
+
+/* ---------- 首页 ---------- */
+.modes { display: flex; gap: 12px; margin: 22px 0; }
+.modes button {
+  border: 2px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 14px; padding: 12px 22px; font-size: 17px; font-weight: 600;
+}
+.modes button.on { border-color: var(--brand); color: var(--brand); background: #e8f7f7; }
+
+.voicebox { width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: 0 10px 30px rgba(20, 60, 80, .06); }
+.heard { min-height: 58px; display: flex; align-items: center; justify-content: center; font-size: 19px; color: var(--ink); border: 2px dashed var(--line); border-radius: 12px; padding: 10px; margin-bottom: 14px; }
+.mic {
+  width: 100%; border: 0; border-radius: 999px; padding: 16px; font-size: 19px; font-weight: 700;
+  background: var(--brand); color: #fff;
+}
+.mic.rec { background: var(--danger); animation: breathe 1.2s infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 0 14px rgba(226, 96, 79, .15); } }
+.go {
+  width: 100%; margin-top: 10px; border: 0; border-radius: 999px; padding: 16px; font-size: 19px; font-weight: 700;
+  background: var(--brand-2); color: #fff;
+}
+.go:disabled { background: #b9cdd4; }
+.ghost { border: 2px solid var(--line); background: var(--card); color: var(--sub); border-radius: 12px; padding: 10px 18px; font-size: 16px; font-weight: 600; }
+
+.quick { margin-top: 20px; color: var(--sub); font-size: 15px; }
+.quick span { display: block; margin-bottom: 8px; }
+.quick button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 9px 16px; margin: 3px; color: var(--brand); font-size: 15px; font-weight: 600; }
+
+.banner { margin-top: 18px; background: #fdf6e8; color: #8a5a13; border-radius: 12px; padding: 12px 16px; font-size: 15px; max-width: 100%; }
+
+/* ---------- 生成中 ---------- */
+.gen ol { list-style: none; padding: 0; margin: 22px 0; }
+.gen li { color: #a9bcc5; font-size: 18px; margin: 10px 0; transition: color .3s; }
+.gen li.on { color: var(--brand); font-weight: 700; }
+.gen li.on::before { content: '✓ '; }
+.face { width: 64px; height: 64px; margin-top: 16px; }
+
+/* ---------- 练习页 ---------- */
+.topbar { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.steps-tag { color: var(--sub); font-size: 15px; font-weight: 600; text-align: center; }
+
+/* 吉祥物 + 气泡引导 */
+.mascot { display: flex; align-items: center; gap: 12px; width: 100%; margin: 14px 0 6px; }
+.mascot .face { margin: 0; flex: none; width: 56px; height: 56px; }
+.bubble {
+  flex: 1; text-align: left; background: var(--card); border: 1.5px solid var(--line);
+  border-radius: 16px; border-bottom-left-radius: 4px; padding: 14px 16px;
+  font-size: clamp(19px, 4.6vw, 24px); line-height: 1.55; font-weight: 600; color: var(--ink);
+  box-shadow: 0 4px 14px rgba(20, 60, 80, .06);
+}
+main.senior .bubble { font-size: clamp(22px, 5.4vw, 28px); }
+
+.dots { display: flex; gap: 8px; margin: 6px 0 18px; flex-wrap: wrap; justify-content: center; }
+.dots i { width: 34px; height: 7px; border-radius: 4px; background: #d7e4e9; }
+.dots i.on { background: var(--brand-2); }
+
+/* 仿真舞台：AI 画的界面在沙箱 iframe 里渲染 */
+.stage {
+  position: relative; width: min(380px, 94vw); height: min(660px, 72vh);
+  background: #dfe7ec; border-radius: 24px; padding: 10px;
+  box-shadow: 0 22px 44px rgba(16, 46, 66, .22);
+  transition: box-shadow .2s, transform .15s;
+}
+.stage iframe { width: 100%; height: 100%; border: 0; border-radius: 16px; background: #fff; display: block; }
+.stage.shake { animation: shake .45s; }
+@keyframes shake { 20% { transform: translateX(-9px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-6px); } 80% { transform: translateX(4px); } }
+.stage.cheer { box-shadow: 0 0 0 6px rgba(22, 161, 132, .35), 0 22px 44px rgba(16, 46, 66, .22); }
+
+/* ---------- 完成页 ---------- */
+.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.confetti i { position: absolute; top: -14px; width: 10px; height: 14px; border-radius: 2px; animation: fall 2.6s linear infinite; }
+@keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+.sub { color: var(--sub); font-size: 16px; }
+.learned { width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin: 18px 0; text-align: left; }
+.learned > b { display: block; margin-bottom: 10px; font-size: 17px; }
+.learned .row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 4px; color: #334a58; font-size: 15px; line-height: 1.5; }
+.learned .row svg { width: 18px; height: 18px; color: #2faa6b; flex: none; margin-top: 3px; }
+.learned .row.review::before { content: '⚠'; color: var(--amber); font-size: 15px; margin-right: 4px; }
+.btns { display: flex; gap: 12px; width: 100%; }
+.btns .go { margin: 0; }
+
+/* ---------- 老人模式整体放大 ---------- */
+main.senior { font-size: 19px; }
+main.senior .heard { font-size: 20px; }
+main.senior .banner { font-size: 18px; }
+
+@media (max-width: 480px) {
+  .page { padding: 22px 14px 34px; }
+  .modes { flex-direction: column; }
+  header { padding: 14px 16px; flex-direction: column; gap: 4px; }
+  .stage { height: min(620px, 68vh); }
+}

@@ -22,7 +22,7 @@ const cheerLines = {
 }
 const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
-/** 小引导员的脸：会根据心情换表情。 */
+/** 小引导员的脸：会眨眼，心情好会变表情。 */
 function Face({ mood }: { mood: Mood }) {
   const mouth = mood === 'happy' ? 'M14 29q10 9 20 0'
     : mood === 'care' ? 'M16 31q8 -5 16 0'
@@ -31,8 +31,8 @@ function Face({ mood }: { mood: Mood }) {
     <svg viewBox="0 0 48 48" className="face" aria-hidden>
       <circle cx="24" cy="24" r="22" fill="#ffd98a" />
       <circle cx="24" cy="24" r="22" fill="none" stroke="#e8a13c" strokeWidth="2" />
-      <circle cx="16.5" cy="20" r="2.7" fill="#5b3a12" />
-      <circle cx="31.5" cy="20" r="2.7" fill="#5b3a12" />
+      <circle className="eye" cx="16.5" cy="20" r="2.7" fill="#5b3a12" />
+      <circle className="eye" cx="31.5" cy="20" r="2.7" fill="#5b3a12" />
       <path d={mouth} stroke="#5b3a12" strokeWidth="2.8" fill="none" strokeLinecap="round" />
       {mood === 'happy' && <>
         <circle cx="10" cy="27" r="2.4" fill="#ff9e9e" opacity=".7" />
@@ -40,6 +40,18 @@ function Face({ mood }: { mood: Mood }) {
       </>}
     </svg>
   )
+}
+
+/** 引导文字一个字一个字蹦出来：跟着读更专注，也更有陪练的感觉 */
+function Typewriter({ text, slow }: { text: string; slow?: boolean }) {
+  const [n, setN] = useState(0)
+  useEffect(() => { setN(0) }, [text])
+  useEffect(() => {
+    if (n >= text.length) return
+    const t = setTimeout(() => setN(n + 1), slow ? 70 : 45)
+    return () => clearTimeout(t)
+  }, [n, text, slow])
+  return <>{text.slice(0, n)}<i className="caret" /></>
 }
 
 /**
@@ -296,6 +308,13 @@ function App() {
   // 摄像头：detect = 扫行为自动开课，guide = 练习中实时指导
   const [camMode, setCamMode] = useState<'off' | 'detect' | 'guide'>('off')
   const [camHint, setCamHint] = useState('')
+  // 参考图（界面截图/机器照片）：随任务发给 AI 照着画，练习时还能对照看
+  const [refImages, setRefImages] = useState<string[]>([])
+  const [refIdx, setRefIdx] = useState(0)
+  const [showRefs, setShowRefs] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  // 这门课获得的星星（做对一步一颗）
+  const [stars, setStars] = useState(0)
   // 一次生成多个练习：并发生成队列 + 选择页
   const [genQueue, setGenQueue] = useState<{ task: string; status: 'loading' | 'ok' | 'fail'; course?: Course }[]>([])
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -380,31 +399,63 @@ function App() {
     r.start()
   }
 
+  /** 选中的图压缩到 720 宽的 jpeg，截图几兆也能很快发出去 */
+  const fileToImage = (file: File): Promise<string> => new Promise((ok, no) => {
+    const fr = new FileReader()
+    fr.onerror = no
+    fr.onload = () => {
+      const img = new Image()
+      img.onerror = no
+      img.onload = () => {
+        const w = Math.min(720, img.width)
+        const h = Math.round(img.height / img.width * w) || 540
+        const c = document.createElement('canvas')
+        c.width = w; c.height = h
+        c.getContext('2d')?.drawImage(img, 0, 0, w, h)
+        ok(c.toDataURL('image/jpeg', 0.72))
+      }
+      img.src = String(fr.result)
+    }
+    fr.readAsDataURL(file)
+  })
+
+  const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files).slice(0, 3) : []
+    e.target.value = ''
+    if (files.length === 0) return
+    try {
+      const imgs = await Promise.all(files.map(fileToImage))
+      setRefImages(a => [...a, ...imgs].slice(0, 3))
+    } catch {
+      setBanner('这张图打不开，换一张试试。')
+    }
+  }
+
   const startCourse = (c: Course, note: string) => {
-    setCourse(c); setStep(0); setErrors(0); setReview([]); setMood('normal'); setPhase('practice')
+    setCourse(c); setStep(0); setErrors(0); setReview([]); setMood('normal'); setPhase('practice'); setStars(0)
     setBanner(note)
     speak(instruction(c.steps[0], persona))
   }
 
-  /** 一次生成一个练习（语音入口） */
+  /** 一次生成一个练习（语音入口）；带着参考图让 AI 照着画 */
   const generate = (input = task) => {
     if (!input.trim()) return setBanner('请先按住语音按钮，说出想学的事情。')
-    void generateMulti([input])
+    void generateMulti([input], '', refImages)
   }
 
   /** 多线程：多个练习同时并发生成，全部完成后一个就直接开始，多个进选择页 */
-  const generateMulti = async (tasks: string[], note = '') => {
+  const generateMulti = async (tasks: string[], note = '', images: string[] = []) => {
     const list = tasks.map(t => t.trim()).filter(Boolean).slice(0, 3)
     if (list.length === 0) return setBanner('AI 这次没安排好，说一说想学什么吧。')
     setPhase('generating'); setStage(0); setBanner('')
     setGenQueue(list.map(t => ({ task: t, status: 'loading' })))
     const timer = setInterval(() => setStage(s => (s + 1) % 3), 1200)
-    // 并发：每个练习一条独立请求，谁先回来谁先显示完成
+    // 并发：每个练习一条独立请求，谁先回来谁先显示完成（参考图只给第一个任务，它是用户亲口说的那件）
     const results = await Promise.allSettled(list.map(async (t, i) => {
       try {
         const res = await fetch('/api/generate-course', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task: t, persona }),
+          body: JSON.stringify({ task: t, persona, images: i === 0 ? images : [] }),
         })
         const data = await res.json() as { html?: string }
         if (!res.ok || !data.html) return undefined
@@ -571,7 +622,17 @@ function App() {
             </button>
             <button className="go" onClick={() => generate()} disabled={!task.trim()}>让 AI 生成练习</button>
             <button className="scan" onClick={() => openCam('detect')}>📷 打开摄像头，让我看看你在做什么</button>
-            <p className="camnote">画面只发给 AI 判断你在做什么，不会保存。</p>
+            <div className="refs">
+              <button className="ghost" onClick={() => fileRef.current?.click()}>📎 加参考图</button>
+              <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+              {refImages.map((src, i) => (
+                <span key={i} className="refthumb">
+                  <img src={src} alt={`参考图${i + 1}`} onClick={() => { setRefIdx(i); setShowRefs(true) }} />
+                  <button aria-label="删除参考图" onClick={() => setRefImages(a => a.filter((_, j) => j !== i))}>×</button>
+                </span>
+              ))}
+            </div>
+            <p className="camnote">可以把真机器的照片或手机截图发给 AI，它会照着图里的样子画练习。画面只发给 AI，不会保存。</p>
           </div>
           <div className="quick">
             <span>不想等？直接开始：</span>
@@ -633,17 +694,25 @@ function App() {
             <button className="ghost" onClick={() => (camMode === 'guide' ? closeCam() : openCam('guide'))}>
               {camMode === 'guide' ? '关闭摄像头' : '摄像头指导'}
             </button>
+            {refImages.length > 0 && (
+              <button className="ghost" onClick={() => { setRefIdx(0); setShowRefs(true) }}>看参考图</button>
+            )}
           </div>
           <div className="mascot">
             <Face mood={mood} />
-            <div className="bubble">{instruction(current, persona)}</div>
+            <div className="bubble"><Typewriter text={instruction(current, persona)} slow={persona === 'senior'} /></div>
+            {stars > 0 && (
+              <span className="stars" aria-label={`已得 ${stars} 颗星`}>
+                {Array.from({ length: stars }, (_, i) => <Icon key={i} name="star" />)}
+              </span>
+            )}
           </div>
           <div className="dots">{course.steps.map((_, i) => <i key={i} className={i <= step ? 'on' : ''} />)}</div>
           <Stage
             step={current}
             persona={persona}
             onSuccess={() => {
-              setCheer(true); setMood('happy')
+              setCheer(true); setMood('happy'); setStars(s => s + 1)
               setTimeout(() => { setCheer(false); setMood('normal') }, 900)
               setBanner(pick(cheerLines[persona]))
               advance(false)
@@ -670,6 +739,12 @@ function App() {
           </div>
           <Face mood="happy" />
           <h1>{persona === 'child' ? '你做对啦！全部完成！' : '全部完成，你已经学会了'}</h1>
+          {stars > 0 && (
+            <div className="bigstars" aria-label={`共得 ${stars} 颗星`}>
+              {Array.from({ length: stars }, (_, i) => <Icon key={i} name="star" />)}
+              <span>得到 {stars} 颗星</span>
+            </div>
+          )}
           <p className="sub">刚才是安全仿真练习，真实设备一点都没被动过。</p>
           <div className="learned">
             <b>这一课：{course.title}</b>
@@ -685,6 +760,15 @@ function App() {
             <button className="ghost" onClick={() => { setCourse(undefined); setTask(''); setPhase('home') }}>学新的事情</button>
           </div>
         </section>
+      )}
+      {showRefs && refImages.length > 0 && (
+        <div className="refviewer" onClick={() => setShowRefs(false)}>
+          <b>参考图 {refIdx + 1} / {refImages.length}（对照着找，点一下任意处关闭）</b>
+          <img src={refImages[Math.min(refIdx, refImages.length - 1)]} alt="参考图" onClick={e => e.stopPropagation()} />
+          {refImages.length > 1 && (
+            <button className="ghost" onClick={e => { e.stopPropagation(); setRefIdx(i => (i + 1) % refImages.length) }}>换一张</button>
+          )}
+        </div>
       )}
       {camMode !== 'off' && (
         <div className="campanel">

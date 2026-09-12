@@ -3,9 +3,11 @@ import { createHash } from 'crypto'
 import { readFile, writeFile, unlink, mkdir, stat, readdir } from 'fs/promises'
 import { join } from 'path'
 
-const API_URL = process.env.LLM_API_URL || 'https://aiping.cn/api/v1/chat/completions'
-const API_KEY = process.env.LLM_API_KEY || process.env.AIPING_API_KEY || ''
-const MODEL = process.env.LLM_MODEL || 'DeepSeek-V4.1-Flash'
+// 模型配置全部来自 .env（vite.config.ts 里用 dotenv 加载）：改地址、模型、密钥只动 .env，代码不写死
+const API_URL = process.env.LLM_API_URL || ''
+const API_KEY = process.env.LLM_API_KEY || ''
+const MODEL = process.env.LLM_MODEL || ''
+const configured = !!(API_URL && API_KEY && MODEL)
 
 const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学的一件事，你把这件事拆成一步一步的练习，每一步的界面都用纯 HTML+CSS 画出来。
 教的不只是手机和机器，日常生活里的事都可以：用微波炉热饭、洗衣机洗衣服、垃圾分类、超市自助结账、坐公交刷卡、去医院挂号、按时分药、扫地拖地、过马路看红绿灯……只要能拆成一步一步操作的事都行。
@@ -48,7 +50,8 @@ const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学�
    - ATM：金属机身、屏幕（蓝色标题条）、数字键盘（3 列 4 排）、插卡口、出钞口。
    - 还有地铁售票机、门禁机、快递柜、医院挂号机等生活场景，按用户说的事来画。
 8. 界面要像真的设备：配色、布局、按钮位置都参考真实机器，字要大，对比要清楚。图标用内联 SVG 画。不要放全屏透明元素挡住可点的东西。
-9. 完全自由发挥：内联 <script>、事件属性、外链图片、字体、任何 http 链接都可以用，把动画和交互做得越像真机器越好。`
+9. 完全自由发挥：内联 <script>、事件属性、外链图片、字体、任何 http 链接都可以用，把动画和交互做得越像真机器越好。
+10. 如果消息里附了参考图片（练习者拍的真实机器照片或界面截图），必须照着图片画这一课的界面：布局、配色、按键的数量和位置、屏幕上写什么字都尽量和图片一致，让练会的东西到真机器上一样找得到。`
 
 /** 服务端只做最低限度的格式检查（结构是否完整），不做内容限制。 */
 function roughCheck(html: string): string | null {
@@ -61,13 +64,18 @@ function roughCheck(html: string): string | null {
   return null
 }
 
-async function callModel(task: string, persona: string, fix?: string): Promise<string> {
+async function callModel(task: string, persona: string, images: string[] = [], fix?: string): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 180000)
   try {
+    const text = `练习者：${persona === 'senior' ? '老年人或数字新手' : '培智学生或儿童'}。他要学的事情：${task}`
+    // 有参考图：文本 + 图片一起发（图里的真实界面要照着画）；没图就纯文本
+    const content: unknown[] | string = images.length
+      ? [...images.map(img => ({ type: 'image_url', image_url: { url: img } })), { type: 'text', text }]
+      : text
     const messages = [
       { role: 'system', content: SYSTEM },
-      { role: 'user', content: `练习者：${persona === 'senior' ? '老年人或数字新手' : '培智学生或儿童'}。他要学的事情：${task}` },
+      { role: 'user', content },
     ]
     if (fix) messages.push({ role: 'user', content: `上一次输出的 HTML 没通过检查：${fix}。请重新输出一份完整、正确的 HTML 文档，仍然只输出 HTML。` })
     const res = await fetch(API_URL, {
@@ -98,8 +106,10 @@ const MAX_BYTES = 1024 * 1024 * 1024 // 1 GB
 /** 缓存条目元数据（JSON 文件，和 html 文件同名但后缀 .meta.json） */
 interface Meta { hits: number; lastUsed: number; size: number; createdAt: number }
 
-function cacheKey(task: string, persona: string): string {
-  return createHash('md5').update(`${persona}:${task}`).digest('hex')
+function cacheKey(task: string, persona: string, images: string[] = []): string {
+  // 参考图参与键：不同的截图生成不同的课（图大，取头尾拼个指纹）
+  const fp = images.length ? images.map(i => i.length + ':' + i.slice(24, 96)).join('|') : ''
+  return createHash('md5').update(`${persona}:${task}:${fp}`).digest('hex')
 }
 
 async function readMeta(fileBase: string): Promise<Meta> {
@@ -115,8 +125,8 @@ async function writeMeta(fileBase: string, meta: Meta) {
   await writeFile(fileBase + '.meta.json', JSON.stringify(meta), 'utf8')
 }
 
-async function cacheGet(task: string, persona: string): Promise<string | null> {
-  const key = cacheKey(task, persona)
+async function cacheGet(task: string, persona: string, images: string[] = []): Promise<string | null> {
+  const key = cacheKey(task, persona, images)
   const base = join(CACHE_DIR, key)
   try {
     const html = await readFile(base + '.html', 'utf8')
@@ -169,8 +179,8 @@ async function evictIfNeeded() {
   }
 }
 
-async function cachePut(task: string, persona: string, html: string) {
-  const key = cacheKey(task, persona)
+async function cachePut(task: string, persona: string, images: string[], html: string) {
+  const key = cacheKey(task, persona, images)
   const base = join(CACHE_DIR, key)
   try {
     await mkdir(CACHE_DIR, { recursive: true })
@@ -193,31 +203,37 @@ apiApp.use(express.json({ limit: '10mb' }))
 apiApp.post('/generate-course', async (req, res) => {
   const task = typeof req.body?.task === 'string' ? req.body.task.trim() : ''
   const persona = req.body?.persona
+  // 参考图（界面截图/机器照片）：最多 3 张，只收 data:image/，和任务一起发给模型照着画
+  const images = Array.isArray(req.body?.images)
+    ? (req.body.images as unknown[])
+      .filter((i): i is string => typeof i === 'string' && i.startsWith('data:image/'))
+      .slice(0, 3)
+    : []
   if (!task || task.length > 120) return res.status(400).json({ error: '请先用语音说出想学的事情。' })
   if (!['child', 'senior'].includes(persona)) return res.status(400).json({ error: '练习模式不正确。' })
-  if (!API_KEY) return res.status(503).json({ error: '服务端还没有配置模型密钥。', fallback: true })
+  if (!configured) return res.status(503).json({ error: '服务端还没有配置模型密钥。', fallback: true })
 
   // 1. 先查缓存
-  const cached = await cacheGet(task, persona)
+  const cached = await cacheGet(task, persona, images)
   if (cached) {
     const problem = roughCheck(cached)
     if (!problem) return res.json({ html: cached, source: 'cache' })
     // 缓存内容不合法，删除后重新生成
-    const key = cacheKey(task, persona)
+    const key = cacheKey(task, persona, images)
     const base = join(CACHE_DIR, key)
     try { await unlink(base + '.html'); await unlink(base + '.meta.json') } catch { /* */ }
   }
 
   try {
-    let html = await callModel(task, persona)
+    let html = await callModel(task, persona, images)
     let problem = roughCheck(html)
     if (problem) {
-      html = await callModel(task, persona, problem)
+      html = await callModel(task, persona, images, problem)
       problem = roughCheck(html)
     }
     if (problem) return res.status(502).json({ error: `AI 画的界面没通过检查：${problem}`, fallback: true })
     // 2. 写入缓存
-    await cachePut(task, persona, html)
+    await cachePut(task, persona, images, html)
     res.json({ html, source: 'ai' })
   } catch (e) {
     const timeout = e instanceof Error && e.name === 'AbortError'
@@ -228,7 +244,7 @@ apiApp.post('/generate-course', async (req, res) => {
   }
 })
 
-apiApp.get('/health', (_req, res) => res.json({ ok: true, model: MODEL, configured: !!API_KEY }))
+apiApp.get('/health', (_req, res) => res.json({ ok: true, model: MODEL || '(未配置)', configured }))
 
 /* ===================== 摄像头视觉：识别设备自动开课 + 练习中实时指导 ===================== */
 
@@ -295,7 +311,7 @@ apiApp.post('/vision-frames', async (req, res) => {
       .slice(0, 6)
     : []
   if (images.length === 0) return res.status(400).json({ error: '没有画面' })
-  if (!API_KEY) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
+  if (!configured) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
   try {
     const raw = await callVision(VISION_FRAMES_SYSTEM, `练习者：${who}。这是连拍的 ${images.length} 帧画面，请综合判断。`, images)
     const parsed = parseJsonLoose(raw)
@@ -319,7 +335,7 @@ apiApp.post('/vision-check', async (req, res) => {
   const who = body.persona === 'child' ? '儿童' : '老人'
   if (!image) return res.status(400).json({ error: '画面格式不对' })
   if (!guide) return res.status(400).json({ error: '缺少步骤说明' })
-  if (!API_KEY) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
+  if (!configured) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
   try {
     const raw = await callVision(VISION_CHECK_SYSTEM, `练习者：${who}。当前这一步：${guide}`, [image])
     const parsed = parseJsonLoose(raw)

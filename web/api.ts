@@ -8,6 +8,7 @@ const API_KEY = process.env.LLM_API_KEY || process.env.AIPING_API_KEY || ''
 const MODEL = process.env.LLM_MODEL || 'DeepSeek-V4.1-Flash'
 
 const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学的一件事，你把这件事拆成一步一步的练习，每一步的界面都用纯 HTML+CSS 画出来。
+教的不只是手机和机器，日常生活里的事都可以：用微波炉热饭、洗衣机洗衣服、垃圾分类、超市自助结账、坐公交刷卡、去医院挂号、按时分药、扫地拖地、过马路看红绿灯……只要能拆成一步一步操作的事都行。
 只输出一个完整的 HTML 文档。不要 markdown 代码块，不要解释，不要 JSON。
 
 输出格式（严格遵守）：
@@ -36,7 +37,7 @@ const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学�
    - swipe 滑动翻页，data-direction 填 up/down/left/right
    - drag 拖动：data-target 是被拖的东西，再加 data-drop="放置位置的id"，放置位置画得明显些
    - slider 拖滑条：data-target 是滑条上的圆点，data-direction 填拖动方向（通常 right）
-   - input 输入：data-target 是输入框，再加 data-value="要输入的内容"
+   - input 输入：data-target 必须是真正的 <input type="text"> 或 <textarea> 标签，绝对不要用 <div> 画输入框（那样点不进去、打不了字），再加 data-value="要输入的内容"
    tap / long_press 的 data-direction 固定填 right。
 4. data-target 填目标元素的 id，这个 id 必须真实出现在这一步的 HTML 里，目标要够大好点（至少 44×44 像素）。
 5. 每一步都画完整界面，后一步要比前一步更接近完成，最后一步做完事情就完成。
@@ -45,7 +46,7 @@ const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学�
    - 手机：深色圆角边框、顶部状态栏（时间+信号+电池）、4 列应用图标、设置页有搜索行和列表、开关、滑条。
    - ATM：金属机身、屏幕（蓝色标题条）、数字键盘（3 列 4 排）、插卡口、出钞口。
    - 还有地铁售票机、门禁机、快递柜、医院挂号机等生活场景，按用户说的事来画。
-8. 界面要像真的设备：配色、布局、按钮位置都参考真实机器，字要大，对比要清楚。图标用内联 SVG 画。
+8. 界面要像真的设备：配色、布局、按钮位置都参考真实机器，字要大，对比要清楚。图标用内联 SVG 画。不要放全屏透明元素挡住可点的东西。
 9. 完全自由发挥：内联 <script>、事件属性、外链图片、字体、任何 http 链接都可以用，把动画和交互做得越像真机器越好。`
 
 /** 服务端只做最低限度的格式检查（结构是否完整），不做内容限制。 */
@@ -227,6 +228,109 @@ apiApp.post('/generate-course', async (req, res) => {
 })
 
 apiApp.get('/health', (_req, res) => res.json({ ok: true, model: MODEL, configured: !!API_KEY }))
+
+/* ===================== 摄像头视觉：识别设备自动开课 + 练习中实时指导 ===================== */
+
+const VISION_FRAMES_SYSTEM = `你看练习者摄像头连拍的几帧画面（同一场景的前后几眼）。人和环境都要看，综合这几帧判断他此刻在做什么、想完成什么事。
+不只看设备，日常生活都看：在厨房用微波炉热饭、往洗衣机里放衣服、拎着垃圾准备分类、在超市自助机前结账、等公交、去医院挂号、拿着药盒分药、扫地拖地、拿着手机找设置……
+硬性规则：只根据画面里真实存在的人和物来判断，画面里没有的不要编。比如几帧里都没有摄像头或电脑，就不要给视频通话、开视频会议这类任务；没有洗衣机就不要洗衣任务。以此类推。
+返回严格 JSON，不要其他任何文字：
+{"practices": [{"task": "练习任务，最多20字"}, {"task": "另一个不同的练习任务，最多20字"}]}
+给 1 到 3 个不同的任务，按可能性从高到低排。看不出他在干什么时返回 {"practices": []}。`
+
+const VISION_CHECK_SYSTEM = `你是耐心的数字技能助教。收到练习者的摄像头画面和他正在练习的一步操作说明。
+判断他现在的状态，返回严格 JSON，不要其他任何文字：
+{"onTrack": true或false, "hint": "一句话中文指导，最多30字"}
+- onTrack：画面显示他正在做这一步（比如手持设备对着屏幕看、站在机器前操作、手指在找东西）。
+- hint：偏了就温和提醒他现在该做什么；对了就给一句简短鼓励。
+看不清就 {"onTrack": false, "hint": "看不清画面，请调整一下摄像头"}。`
+
+/** 调视觉模型：文本 + 可选的多张 base64 图（多帧一起看），返回模型原始文本 */
+async function callVision(system: string, userText: string, images?: string[]): Promise<string> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 45000)
+  try {
+    const content: unknown[] = [{ type: 'text', text: userText }]
+    if (images) for (const img of images) content.push({ type: 'image_url', image_url: { url: img } })
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content },
+        ],
+      }),
+    })
+    if (!res.ok) throw new Error(`模型服务返回 ${res.status}`)
+    const data = await res.json() as { choices?: { message?: { content?: string } }[] }
+    return data?.choices?.[0]?.message?.content || ''
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 模型偶尔在 JSON 外面包文字，宽松提取第一个 {...} */
+function parseJsonLoose(raw: string): Record<string, unknown> | null {
+  const m = raw.match(/\{[\s\S]*\}/)
+  if (!m) return null
+  try { return JSON.parse(m[0]) as Record<string, unknown> } catch { return null }
+}
+
+function validImage(body: { image?: unknown }): string | null {
+  return typeof body.image === 'string' && body.image.startsWith('data:image/') ? body.image : null
+}
+
+// 多帧识别：连拍的几帧一起打包给模型，直接得出多个练习任务
+apiApp.post('/vision-frames', async (req, res) => {
+  const body = req.body ?? {}
+  const who = body.persona === 'child' ? '儿童' : '老人'
+  const images = Array.isArray(body.images)
+    ? (body.images as unknown[])
+      .filter((i): i is string => typeof i === 'string' && i.startsWith('data:image/'))
+      .slice(0, 6)
+    : []
+  if (images.length === 0) return res.status(400).json({ error: '没有画面' })
+  if (!API_KEY) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
+  try {
+    const raw = await callVision(VISION_FRAMES_SYSTEM, `练习者：${who}。这是连拍的 ${images.length} 帧画面，请综合判断。`, images)
+    const parsed = parseJsonLoose(raw)
+    if (!parsed || !Array.isArray(parsed.practices)) return res.status(502).json({ error: 'AI 没看明白' })
+    const practices = parsed.practices
+      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+      .map(p => ({ task: typeof p.task === 'string' ? p.task.slice(0, 60) : '' }))
+      .filter(p => p.task)
+      .slice(0, 3)
+    res.json({ practices })
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : '识别失败' })
+  }
+})
+
+// 练习中指导：看画面 + 当前步骤说明，判断是否跟得上并给提示
+apiApp.post('/vision-check', async (req, res) => {
+  const body = req.body ?? {}
+  const image = validImage(body)
+  const guide = typeof body.guide === 'string' ? body.guide.slice(0, 200) : ''
+  const who = body.persona === 'child' ? '儿童' : '老人'
+  if (!image) return res.status(400).json({ error: '画面格式不对' })
+  if (!guide) return res.status(400).json({ error: '缺少步骤说明' })
+  if (!API_KEY) return res.status(503).json({ error: '服务端还没有配置模型密钥' })
+  try {
+    const raw = await callVision(VISION_CHECK_SYSTEM, `练习者：${who}。当前这一步：${guide}`, [image])
+    const parsed = parseJsonLoose(raw)
+    if (!parsed) return res.status(502).json({ error: 'AI 没看明白' })
+    res.json({
+      onTrack: !!parsed.onTrack,
+      hint: typeof parsed.hint === 'string' ? parsed.hint.slice(0, 60) : '',
+    })
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : '识别失败' })
+  }
+})
 
 apiApp.get('/cache-stats', async (_req, res) => {
   try {

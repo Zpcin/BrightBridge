@@ -7,7 +7,7 @@ import {
   classifyGesture, instruction, parseCourseHtml, retry,
 } from './course'
 
-type Phase = 'home' | 'generating' | 'practice' | 'done'
+type Phase = 'home' | 'generating' | 'pick' | 'practice' | 'done'
 type Mood = 'normal' | 'happy' | 'care'
 
 /** Web Speech API 的事件类型（TS 标准 DOM 库里没有） */
@@ -84,6 +84,17 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
     doc.getElementById(a0.targetId)?.classList.add('sb-target')
     if (a0.dropId) doc.getElementById(a0.dropId)?.classList.add('sb-drop')
 
+    // input 步骤：保证目标真的能打字——真输入框去掉只读，画出来的假框转成可编辑，并自动聚焦
+    if (a0.type === 'input') {
+      const el = doc.getElementById(a0.targetId)
+      if (el) {
+        el.removeAttribute('readonly')
+        el.removeAttribute('disabled')
+        if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') el.setAttribute('contenteditable', 'true')
+        setTimeout(() => el.focus(), 80)
+      }
+    }
+
     // 跨 iframe 不能用 instanceof，用鸭子类型判断元素
     const closest = (node: EventTarget | null, sel: string): Element | null => {
       if (!node || typeof (node as { closest?: unknown }).closest !== 'function') return null
@@ -94,14 +105,15 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
     let holdTimer: number | undefined
     let settled = false
 
-    // input：输入内容匹配即成功（不需要松手）
-    if (act().type === 'input') {
+    // input：输入内容匹配即成功（不需要松手）。空格不算，避免断在空格上。
+    if (a0.type === 'input') {
       doc.addEventListener('input', e => {
         if (settled) return
         const el = closest(e.target, '#' + act().targetId)
         if (!el) return
-        const val = (el as HTMLInputElement).value ?? el.textContent ?? ''
-        if (val.trim() === (act().value || '').trim()) { settled = true; cbRef.current.onSuccess() }
+        const val = ((el as HTMLInputElement).value ?? el.textContent ?? '').replace(/\s/g, '')
+        const want = (act().value || '').replace(/\s/g, '')
+        if (val && val === want) { settled = true; cbRef.current.onSuccess() }
       })
     }
 
@@ -166,6 +178,42 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
   )
 }
 
+/** 等待生成时的小游戏：点泡泡，吸引注意力 */
+function BubbleGame() {
+  const [score, setScore] = useState(0)
+  const [bubbles, setBubbles] = useState<{ id: number; left: number; dur: number; color: string; size: number }[]>([])
+  const idRef = useRef(0)
+  useEffect(() => {
+    const colors = ['#f4b740', '#2faa6b', '#3d8fdd', '#e2604f', '#8a6fd6']
+    const spawn = setInterval(() => {
+      setBubbles(bs => bs.length >= 6 ? bs : [...bs, {
+        id: idRef.current++,
+        left: 6 + Math.random() * 80,
+        dur: 4.5 + Math.random() * 2.5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 46 + Math.random() * 28,
+      }])
+    }, 800)
+    return () => clearInterval(spawn)
+  }, [])
+  const gone = (id: number) => setBubbles(bs => bs.filter(b => b.id !== id))
+  return (
+    <div className="bubblegame">
+      <p>等的时候点一点泡泡玩：<b>{score}</b></p>
+      <div className="pond">
+        {bubbles.map(b => (
+          <i
+            key={b.id}
+            style={{ left: `${b.left}%`, background: b.color, width: b.size, height: b.size, animationDuration: `${b.dur}s` }}
+            onClick={() => { gone(b.id); setScore(s => s + 1) }}
+            onAnimationEnd={() => gone(b.id)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [persona, setPersona] = useState<Persona>('senior')
   const [task, setTask] = useState('')
@@ -180,6 +228,16 @@ function App() {
   const [mood, setMood] = useState<Mood>('normal')
   const [review, setReview] = useState<number[]>([])
   const [stage, setStage] = useState(0) // 生成页进度动画
+  // 摄像头：detect = 扫行为自动开课，guide = 练习中实时指导
+  const [camMode, setCamMode] = useState<'off' | 'detect' | 'guide'>('off')
+  const [camHint, setCamHint] = useState('')
+  // 一次生成多个练习：并发生成队列 + 选择页
+  const [genQueue, setGenQueue] = useState<{ task: string; status: 'loading' | 'ok' | 'fail'; course?: Course }[]>([])
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const busyRef = useRef(false)      // 视觉请求防重入
+  const lastHintRef = useRef('')     // 同一句提示不重复播报
+  const guideRef = useRef('')        // 当前步骤说明，给视觉接口用
 
   const speak = (s: string) => {
     speechSynthesis?.cancel()
@@ -190,6 +248,52 @@ function App() {
   useEffect(() => () => speechSynthesis?.cancel(), [])
 
   const current = course?.steps[Math.min(step, (course?.steps.length ?? 1) - 1)]
+
+  // 当前步骤说明同步给视觉接口；换步骤后允许重新播报
+  useEffect(() => { guideRef.current = current ? instruction(current, persona) : '' }, [current, persona])
+  useEffect(() => { lastHintRef.current = '' }, [step])
+
+  /** 从摄像头截一帧，缩到 480 宽的 jpeg dataUrl */
+  const captureFrame = (): string | null => {
+    const video = videoRef.current
+    if (!video || !video.videoWidth) return null
+    const canvas = document.createElement('canvas')
+    const w = 480
+    const h = Math.round(video.videoHeight / video.videoWidth * w) || 360
+    canvas.width = w
+    canvas.height = h
+    canvas.getContext('2d')?.drawImage(video, 0, 0, w, h)
+    return canvas.toDataURL('image/jpeg', 0.6)
+  }
+
+  const openCam = async (mode: 'detect' | 'guide') => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640 }, audio: false })
+      streamRef.current = stream
+      setCamHint('')
+      setCamMode(mode)
+    } catch {
+      setBanner('摄像头打不开，请允许浏览器使用摄像头。')
+    }
+  }
+
+  const closeCam = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setCamMode('off')
+    setCamHint('')
+  }
+
+  // camMode 变化后 video 元素才渲染，这里把流接上
+  useEffect(() => {
+    if (camMode !== 'off' && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(() => {})
+    }
+  }, [camMode])
+
+  // 卸载时关流
+  useEffect(() => () => { streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
 
   const voice = () => {
     const w = window as unknown as Record<string, unknown>
@@ -217,35 +321,129 @@ function App() {
     speak(instruction(c.steps[0], persona))
   }
 
-  const generate = async (input = task) => {
+  /** 一次生成一个练习（语音入口） */
+  const generate = (input = task) => {
     if (!input.trim()) return setBanner('请先按住语音按钮，说出想学的事情。')
+    void generateMulti([input])
+  }
+
+  /** 多线程：多个练习同时并发生成，全部完成后一个就直接开始，多个进选择页 */
+  const generateMulti = async (tasks: string[], note = '') => {
+    const list = tasks.map(t => t.trim()).filter(Boolean).slice(0, 3)
+    if (list.length === 0) return setBanner('AI 这次没安排好，说一说想学什么吧。')
     setPhase('generating'); setStage(0); setBanner('')
+    setGenQueue(list.map(t => ({ task: t, status: 'loading' })))
     const timer = setInterval(() => setStage(s => (s + 1) % 3), 1200)
-    try {
-      const res = await fetch('/api/generate-course', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: input, persona }),
-      })
-      const data = await res.json() as { html?: string; error?: string }
-      clearInterval(timer)
-      if (!res.ok || !data.html) {
-        setBanner(`${data.error ?? 'AI 这次没生成好'}，已换成本地课程。`)
-        startCourse(demoCourses[0], '')
-        return
+    // 并发：每个练习一条独立请求，谁先回来谁先显示完成
+    const results = await Promise.allSettled(list.map(async (t, i) => {
+      try {
+        const res = await fetch('/api/generate-course', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task: t, persona }),
+        })
+        const data = await res.json() as { html?: string }
+        if (!res.ok || !data.html) return undefined
+        const parsed = parseCourseHtml(data.html)
+        if ('error' in parsed) return undefined
+        setGenQueue(q => q.map((g, j) => j === i ? { ...g, status: 'ok', course: parsed } : g))
+        return parsed
+      } catch {
+        return undefined
       }
-      const parsed = parseCourseHtml(data.html)
-      if ('error' in parsed) {
-        setBanner(`AI 画的界面没通过检查（${parsed.error}），已换成本地课程。`)
-        startCourse(demoCourses[0], '')
-        return
-      }
-      startCourse(parsed, `AI 为你生成好了：${parsed.title}`)
-    } catch {
-      clearInterval(timer)
-      setBanner('连不上 AI，先用本地课程练习。')
+    }))
+    clearInterval(timer)
+    const courses = results.map(r => (r.status === 'fulfilled' ? r.value : undefined))
+    setGenQueue(q => q.map((g, i) => courses[i] ? { ...g, status: 'ok', course: courses[i] } : { ...g, status: 'fail' }))
+    const ready = courses.filter((c): c is Course => !!c)
+    if (ready.length === 0) {
+      setBanner('AI 这次没生成好，已换成本地课程。')
       startCourse(demoCourses[0], '')
+    } else if (ready.length === 1) {
+      startCourse(ready[0], note || `AI 为你生成好了：${ready[0].title}`)
+    } else {
+      setPhase('pick')
+      speak('练习都准备好了，选一个开始吧')
     }
   }
+
+  /* 摄像头扫一扫：本地连拍几帧（不逐帧调接口），攒够一次打包识别，再并发生成多个练习 */
+  useEffect(() => {
+    if (camMode !== 'detect') return
+    let stopped = false
+    let ticks = 0
+    const frames: string[] = []
+    const MAX = 5
+    const tick = async () => {
+      if (stopped) return
+      ticks++
+      const image = captureFrame()
+      if (!image) {
+        if (ticks >= 12) { setBanner('摄像头没有画面，检查一下再试。'); closeCam() }
+        return
+      }
+      frames.push(image)
+      setCamHint(`正在多看几眼…（第 ${frames.length} / ${MAX} 眼）`)
+      if (frames.length < MAX) return
+      // 攒够了：多帧一起识别
+      closeCam()
+      setPhase('generating'); setStage(0); setBanner('')
+      speak('我看清楚你想做的事了，马上给你准备几个练习')
+      try {
+        const res = await fetch('/api/vision-frames', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ images: frames, persona }),
+        })
+        const data = await res.json() as { practices?: { task: string }[]; error?: string }
+        const tasks = res.ok ? (data.practices ?? []).map(p => p.task).filter(Boolean).slice(0, 3) : []
+        if (tasks.length === 0) throw new Error('empty')
+        await generateMulti(tasks)
+      } catch {
+        setBanner('AI 这次没看明白，说一说想学什么吧。')
+        setPhase('home')
+      }
+    }
+    const timer = setInterval(tick, 2000)
+    tick()
+    return () => { stopped = true; clearInterval(timer) }
+  }, [camMode])
+
+  /* 摄像头指导：练习中每 6 秒看一帧，判断你做得对不对，偏了就开口提醒 */
+  useEffect(() => {
+    if (camMode !== 'guide' || phase !== 'practice') return
+    let stopped = false
+    let fails = 0
+    const tick = async () => {
+      if (stopped || busyRef.current) return
+      const image = captureFrame()
+      if (!image) return
+      busyRef.current = true
+      try {
+        const res = await fetch('/api/vision-check', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image, guide: guideRef.current, persona }),
+        })
+        const data = await res.json() as { onTrack?: boolean; hint?: string; error?: string }
+        if (stopped) return
+        if (res.ok) {
+          fails = 0
+          setCamHint(data.hint || '我正在看着你练习…')
+          if (data.onTrack === false && data.hint && data.hint !== lastHintRef.current) {
+            lastHintRef.current = data.hint
+            speak(data.hint)
+          }
+        } else {
+          fails++
+          if (fails >= 3) { setBanner('摄像头指导暂时不可用，已关闭。'); closeCam() }
+        }
+      } catch { /* 网络抖动忽略 */ } finally { busyRef.current = false }
+    }
+    const timer = setInterval(tick, 6000)
+    tick()
+    return () => { stopped = true; clearInterval(timer) }
+  }, [camMode, phase, persona])
+
+  // 离开练习页自动关掉指导摄像头
+  useEffect(() => { if (phase !== 'practice' && camMode === 'guide') closeCam() }, [phase, camMode])
 
   const advance = (needReview: boolean) => {
     if (!course) return
@@ -307,6 +505,8 @@ function App() {
               {listening ? '正在聆听…松开等结果' : '按一下，说出想学的事'}
             </button>
             <button className="go" onClick={() => generate()} disabled={!task.trim()}>让 AI 生成练习</button>
+            <button className="scan" onClick={() => openCam('detect')}>📷 打开摄像头，让我看看你在做什么</button>
+            <p className="camnote">画面只发给 AI 判断你在做什么，不会保存。</p>
           </div>
           <div className="quick">
             <span>不想等？直接开始：</span>
@@ -322,13 +522,40 @@ function App() {
         <section className="page gen">
           <Face mood="normal" />
           <h1>我正在准备…</h1>
-          <ol>
-            {['听懂你说的事', '拆成小步骤', '画出练习界面'].map((s, i) => (
-              <li key={s} className={i <= stage ? 'on' : ''}>{s}…</li>
-            ))}
-          </ol>
-          <p className="banner">太久的话，可以返回用本地课程先练。</p>
-          <button className="ghost" onClick={() => setPhase('home')}>返回</button>
+          {genQueue.length === 0 ? (
+            <ol>
+              {['听懂你说的事', '拆成小步骤', '画出练习界面'].map((s, i) => (
+                <li key={s} className={i <= stage ? 'on' : ''}>{s}…</li>
+              ))}
+            </ol>
+          ) : (
+            <ul className="genlist">
+              {genQueue.map(g => (
+                <li key={g.task} className={g.status}>
+                  {g.status === 'ok' ? '✓ 好了：' : g.status === 'fail' ? '× 没画好：' : '… 正在画：'}
+                  {g.task}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="banner">同时画几个要一点时间，可以先点点下面的泡泡。</p>
+          <BubbleGame />
+          <button className="ghost" onClick={() => { setGenQueue([]); setPhase('home') }}>返回</button>
+        </section>
+      )}
+
+      {phase === 'pick' && (
+        <section className="page pick">
+          <Face mood="happy" />
+          <h1>给你准备了 {genQueue.filter(g => g.course).length} 个练习</h1>
+          <p className="sub">点一个开始</p>
+          {genQueue.filter((g): g is { task: string; status: 'ok'; course: Course } => !!g.course).map(g => (
+            <button className="pickcard" key={g.task} onClick={() => startCourse(g.course, 'AI 为你生成好了。')}>
+              <b>{g.course.title}</b>
+              <span>{g.task}</span>
+            </button>
+          ))}
+          <button className="ghost" onClick={() => { setGenQueue([]); setPhase('home') }}>都不是，我重新说</button>
         </section>
       )}
 
@@ -338,6 +565,9 @@ function App() {
             <button className="ghost" onClick={() => setPhase('home')}>← 退出</button>
             <span className="steps-tag">{course.title} · 第 {step + 1} / {course.steps.length} 步</span>
             <button className="ghost" onClick={() => speak(instruction(current, persona))}>重听</button>
+            <button className="ghost" onClick={() => (camMode === 'guide' ? closeCam() : openCam('guide'))}>
+              {camMode === 'guide' ? '关闭摄像头' : '摄像头指导'}
+            </button>
           </div>
           <div className="mascot">
             <Face mood={mood} />
@@ -390,6 +620,16 @@ function App() {
             <button className="ghost" onClick={() => { setCourse(undefined); setTask(''); setPhase('home') }}>学新的事情</button>
           </div>
         </section>
+      )}
+      {camMode !== 'off' && (
+        <div className="campanel">
+          <video ref={videoRef} playsInline muted />
+          <div className="camstatus">
+            <i className="dot" />
+            <span>{camHint || (camMode === 'detect' ? '正在看你在做什么…' : '正在看着你练习…')}</span>
+          </div>
+          <button className="camclose" onClick={closeCam} aria-label="关闭摄像头">×</button>
+        </div>
       )}
     </main>
   )

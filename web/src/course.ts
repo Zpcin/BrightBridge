@@ -1,19 +1,24 @@
 export type Persona = 'child' | 'senior'
-export type ActionType = 'tap' | 'long_press' | 'swipe'
+export type ActionType = 'tap' | 'long_press' | 'swipe' | 'drag' | 'slider' | 'input'
 export type Direction = 'up' | 'down' | 'left' | 'right'
 
-/**
- * 一步练习：
- * - guide：形象化的操作说明（只描述长相和位置，不出英文词）
- * - why：给老人看的一句话原因
- * - action：要做什么动作、目标元素的 id
- * - html：这一步的完整界面（纯 HTML+CSS，在沙箱 iframe 里渲染）
- */
+/** 一步的动作：类型 + 方向 + 目标（drag 还有放置目标，input 还有期望内容） */
+export interface StepAction {
+  type: ActionType
+  direction: Direction
+  targetId: string
+  /** drag：放置目标的 id */
+  dropId?: string
+  /** input：要输入的内容 */
+  value?: string
+}
+
+/** 一步练习：guide 形象化说明，html 是这一步的完整界面（原样渲染，不清理） */
 export interface Step {
   id: string
   guide: string
   why: string
-  action: { type: ActionType; direction: Direction; targetId: string }
+  action: StepAction
   html: string
 }
 
@@ -22,6 +27,9 @@ export interface Course { title: string; steps: Step[] }
 export type Gesture =
   | { type: 'tap' | 'long_press' | 'swipe'; direction: Direction }
   | 'invalid'
+
+export const ACTION_TYPES: ActionType[] = ['tap', 'long_press', 'swipe', 'drag', 'slider', 'input']
+const DIRECTIONS: Direction[] = ['up', 'down', 'left', 'right']
 
 export function classifyGesture(dx: number, dy: number, dt: number, moved: number): Gesture {
   if (moved >= 35) {
@@ -32,27 +40,7 @@ export function classifyGesture(dx: number, dy: number, dt: number, moved: numbe
   return { type: 'tap', direction: 'right' }
 }
 
-/** 清理危险内容：外部嵌入对象和危险链接。脚本和事件属性保留（用户要求不隔离 JS）。 */
-function sanitize(root: Element) {
-  root.querySelectorAll('iframe, object, embed').forEach(n => n.remove())
-  const walk = (el: Element) => {
-    for (const attr of Array.from(el.attributes)) {
-      const name = attr.name.toLowerCase()
-      const value = attr.value.trim().toLowerCase()
-      // 只拦 javascript: 和 data:text/html，允许正常的 http 链接和事件属性
-      const danger = (name === 'href' || name === 'src' || name === 'xlink:href')
-        && (value.startsWith('javascript:') || value.startsWith('data:text/html'))
-      if (danger) el.removeAttribute(attr.name)
-    }
-    Array.from(el.children).forEach(walk)
-  }
-  walk(root)
-}
-
-/**
- * 把 AI 生成的整份 HTML 课程文档解析成步骤列表。
- * 格式：每个步骤是一个 <section class="sb-step" data-guide data-why data-action data-target data-direction>。
- */
+/** 把 AI 生成的 HTML 课程文档解析成步骤列表。内容原样保留，只校验结构。 */
 export function parseCourseHtml(raw: string): Course | { error: string } {
   let doc: Document
   try {
@@ -73,14 +61,21 @@ export function parseCourseHtml(raw: string): Course | { error: string } {
     const type = (sec.getAttribute('data-action') || '') as ActionType
     const direction = (sec.getAttribute('data-direction') || 'right') as Direction
     const targetId = (sec.getAttribute('data-target') || '').trim().slice(0, 40)
+    const dropId = (sec.getAttribute('data-drop') || '').trim().slice(0, 40) || undefined
+    const value = (sec.getAttribute('data-value') || '').slice(0, 40) || undefined
+
     if (!guide) return { error: `第 ${i + 1} 步缺少操作说明` }
-    if (!['tap', 'long_press', 'swipe'].includes(type)) return { error: `第 ${i + 1} 步动作不对` }
-    if (type === 'swipe' && !['left', 'right'].includes(direction)) return { error: `第 ${i + 1} 步拖动方向不对` }
+    if (!ACTION_TYPES.includes(type)) return { error: `第 ${i + 1} 步动作类型不对` }
+    if (!DIRECTIONS.includes(direction)) return { error: `第 ${i + 1} 步方向不对` }
     if (!/^[a-zA-Z][\w-]*$/.test(targetId)) return { error: `第 ${i + 1} 步目标 id 不合法` }
     if (!sec.querySelector('#' + targetId)) return { error: `第 ${i + 1} 步找不到目标元素 ${targetId}` }
-    if (sec.innerHTML.length > 40000) return { error: `第 ${i + 1} 步界面太大` }
-    sanitize(sec)
-    steps.push({ id: `s${i + 1}`, guide, why, action: { type, direction, targetId }, html: sec.innerHTML })
+    if (type === 'drag') {
+      if (!dropId || !/^[a-zA-Z][\w-]*$/.test(dropId)) return { error: `第 ${i + 1} 步缺少放置目标 data-drop` }
+      if (!sec.querySelector('#' + dropId)) return { error: `第 ${i + 1} 步找不到放置目标 ${dropId}` }
+    }
+    if (type === 'input' && !value) return { error: `第 ${i + 1} 步缺少要输入的内容 data-value` }
+    if (sec.innerHTML.length > 60000) return { error: `第 ${i + 1} 步界面太大` }
+    steps.push({ id: `s${i + 1}`, guide, why, action: { type, direction, targetId, dropId, value }, html: sec.innerHTML })
   }
   return { title, steps }
 }

@@ -43,9 +43,9 @@ function Face({ mood }: { mood: Mood }) {
 }
 
 /**
- * 仿真舞台：把 AI 画的一步界面放进无脚本沙箱 iframe 里渲染。
- * sandbox 不带 allow-scripts，AI 的 HTML 无法运行任何脚本；
- * 渲染后由父页面注入点击 / 长按 / 拖动识别。
+ * 仿真舞台：AI 画的界面放进 iframe 原样渲染（脚本、外链照常运行），
+ * 父页面在 iframe document 上注入六种动作判定：
+ * tap / long_press / swipe / drag（拖到放置区）/ slider（拖滑条）/ input（输入内容）。
  */
 function Stage({
   step, persona, onSuccess, onWrong, onInvalid, shake, cheer,
@@ -71,29 +71,44 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden}
 body{font-family:system-ui,'PingFang SC','Microsoft YaHei',sans-serif;color:#1d2b36;font-size:${16 * scale}px}
 body>:not(style):not(script){width:100%;height:100%;display:block}
 .sb-target{outline:4px solid #e8a13c !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
+.sb-drop{outline:4px dashed #2faa6b !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
 @keyframes sbglow{50%{outline-color:rgba(232,161,60,.25)}}
 </style></head><body>${step.html}</body></html>`, [step, scale])
 
   const handleLoad = () => {
     const doc = frame.current?.contentDocument
     if (!doc) return
-    // 高亮这一步的目标
-    doc.getElementById(stepRef.current.action.targetId)?.classList.add('sb-target')
-    // 手势识别（父页面注入到 iframe document 上）
-    let down: { x: number; y: number; t: number; moved: number } | null = null
+    // 高亮这一步的目标；drag 的放置区用绿色虚线
+    const act = () => stepRef.current.action
+    const a0 = act()
+    doc.getElementById(a0.targetId)?.classList.add('sb-target')
+    if (a0.dropId) doc.getElementById(a0.dropId)?.classList.add('sb-drop')
+
+    // 跨 iframe 不能用 instanceof，用鸭子类型判断元素
+    const closest = (node: EventTarget | null, sel: string): Element | null => {
+      if (!node || typeof (node as { closest?: unknown }).closest !== 'function') return null
+      return (node as Element).closest(sel)
+    }
+
+    let down: { x: number; y: number; t: number; moved: number; onTarget: boolean } | null = null
     let holdTimer: number | undefined
     let settled = false
 
-    const onTarget = (node: EventTarget | null) => {
-      // 不能用 instanceof Element：iframe 有自己的 Element 构造函数，
-      // 父页面的 instanceof 对 iframe 内元素永远返回 false
-      if (!node || typeof (node as { closest?: unknown }).closest !== 'function') return false
-      return !!(node as Element).closest('#' + stepRef.current.action.targetId)
+    // input：输入内容匹配即成功（不需要松手）
+    if (act().type === 'input') {
+      doc.addEventListener('input', e => {
+        if (settled) return
+        const el = closest(e.target, '#' + act().targetId)
+        if (!el) return
+        const val = (el as HTMLInputElement).value ?? el.textContent ?? ''
+        if (val.trim() === (act().value || '').trim()) { settled = true; cbRef.current.onSuccess() }
+      })
     }
+
     doc.addEventListener('pointerdown', e => {
-      down = { x: e.clientX, y: e.clientY, t: Date.now(), moved: 0 }
+      down = { x: e.clientX, y: e.clientY, t: Date.now(), moved: 0, onTarget: !!closest(e.target, '#' + act().targetId) }
       settled = false
-      if (stepRef.current.action.type === 'long_press' && onTarget(e.target)) {
+      if (act().type === 'long_press' && down.onTarget) {
         holdTimer = window.setTimeout(() => {
           if (down && down.moved < 12 && !settled) { settled = true; cbRef.current.onSuccess() }
         }, 600)
@@ -104,13 +119,36 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
     })
     doc.addEventListener('pointerup', e => {
       if (holdTimer !== undefined) { clearTimeout(holdTimer); holdTimer = undefined }
-      if (!down || settled) return
-      const g = classifyGesture(e.clientX - down.x, e.clientY - down.y, Date.now() - down.t, down.moved)
-      const hit = onTarget(e.target)
+      if (!down || settled) { down = null; return }
+      const dx = e.clientX - down.x
+      const dy = e.clientY - down.y
+      const dt = Date.now() - down.t
+      const moved = Math.hypot(dx, dy)
+      const started = down.onTarget
+      const a = act()
       down = null
+
+      // input 步骤：点按只当聚焦，不算对错
+      if (a.type === 'input') return
+
+      // drag：必须从目标按起，松手时指针在放置区内
+      if (a.type === 'drag') {
+        const over = doc.elementFromPoint(e.clientX, e.clientY)
+        const landed = !!closest(over, '#' + (a.dropId || ''))
+        return started && landed ? cbRef.current.onSuccess() : cbRef.current.onWrong({ type: 'tap', direction: 'right' })
+      }
+
+      // slider：必须按住圆点，沿指定方向拖出足够距离
+      if (a.type === 'slider') {
+        const dist = a.direction === 'left' ? -dx : a.direction === 'right' ? dx : a.direction === 'up' ? -dy : dy
+        return started && dist >= 40 ? cbRef.current.onSuccess() : cbRef.current.onWrong({ type: 'tap', direction: 'right' })
+      }
+
+      // tap / long_press / swipe：手势分类 + 目标命中
+      const g = classifyGesture(dx, dy, dt, moved)
+      const hit = !!closest(e.target, '#' + a.targetId)
       if (g === 'invalid') return cbRef.current.onInvalid()
       if (!hit) return cbRef.current.onWrong(g)
-      const a = stepRef.current.action
       const right = g.type === a.type && (g.type !== 'swipe' || g.direction === a.direction)
       right ? cbRef.current.onSuccess() : cbRef.current.onWrong(g)
     })
@@ -121,7 +159,6 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
       <iframe
         ref={frame}
         title="仿真界面"
-        sandbox="allow-scripts allow-same-origin"
         srcDoc={srcDoc}
         onLoad={handleLoad}
       />
@@ -227,7 +264,10 @@ function App() {
     if (!current || g === 'invalid') return '再试一次。'
     const a = current.action
     if (a.type === 'long_press' && g.type === 'tap') return '要按住不动，等它变颜色。'
-    if (a.type === 'swipe' && g.type === 'tap') return '要按住圆点，慢慢往右边拖。'
+    if (a.type === 'swipe' && g.type === 'tap') return '要按住不放，往箭头方向滑动。'
+    if (a.type === 'drag') return '要按住它，拖到绿色虚线框的地方再松手。'
+    if (a.type === 'slider') return '要按住圆点，往要去的方向拖远一点再松手。'
+    if (a.type === 'input') return '点一下输入框，把要打的内容打进去。'
     return retry(errors)
   }
 

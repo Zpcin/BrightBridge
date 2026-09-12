@@ -178,7 +178,7 @@ const fontDoc = `<!doctype html><html><head><title>把字调大</title></head><b
 ${sec('找第1排第1个，蓝色的圆形图标，里面画着齿轮，点一下。', '设置里能改手机的显示', 'tap', 'icon-settings', home)}
 ${sec('找第3行，橙色的长方形条目，里面画着太阳，点一下。', '字的大小在显示里面', 'tap', 'row-display', settingsPage)}
 ${sec('找第1行，蓝色的长方形条目，写着字体大小，点一下。', '点进去就能看到字的大小', 'tap', 'row-font', displayPage)}
-${sec('按住滑条上的白色圆点，慢慢往右边拖。', '往右边拖，字就会变大', 'swipe', 'slider-size', fontPage)}
+${sec('按住滑条上的白色圆点，慢慢往右边拖。', '往右边拖，字就会变大', 'slider', 'slider-size', fontPage)}
 </body></html>`
 
 const docs = [wifiDoc, fontDoc, atmDoc, metroDoc]

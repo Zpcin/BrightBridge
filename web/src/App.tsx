@@ -67,11 +67,13 @@ function Stage({
   const scale = persona === 'senior' ? 1.12 : 1
   const srcDoc = useMemo(() => `<!doctype html><html><head><meta charset="utf-8">
 <style>
-html,body{margin:0;padding:0;height:100%;overflow:hidden}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 body{font-family:system-ui,'PingFang SC','Microsoft YaHei',sans-serif;color:#1d2b36;font-size:${16 * scale}px}
 body>:not(style):not(script){width:100%;height:100%;display:block}
+input,textarea{user-select:text;-webkit-user-select:text}
 .sb-target{outline:4px solid #e8a13c !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
 .sb-drop{outline:4px dashed #2faa6b !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
+.sb-drop-hot{outline:6px solid #2faa6b !important;box-shadow:0 0 0 8px rgba(47,170,107,.25) inset,0 0 18px rgba(47,170,107,.5) !important;background-color:rgba(47,170,107,.12) !important}
 @keyframes sbglow{50%{outline-color:rgba(232,161,60,.25)}}
 </style></head><body>${step.html}</body></html>`, [step, scale])
 
@@ -105,32 +107,95 @@ body>:not(style):not(script){width:100%;height:100%;display:block}
     let holdTimer: number | undefined
     let settled = false
 
-    // input：输入内容匹配即成功（不需要松手）。空格不算，避免断在空格上。
+    // input：输入内容符合就成功（不需要松手）。空格不算，避免断在空格上。
+    // AI 可以在 data-check 写任何判断式（v 表示当前输入内容）；不写就按等于 data-value 匹配。
     if (a0.type === 'input') {
       doc.addEventListener('input', e => {
         if (settled) return
         const el = closest(e.target, '#' + act().targetId)
         if (!el) return
-        const val = ((el as HTMLInputElement).value ?? el.textContent ?? '').replace(/\s/g, '')
-        const want = (act().value || '').replace(/\s/g, '')
-        if (val && val === want) { settled = true; cbRef.current.onSuccess() }
+        const a = act()
+        const raw = ((el as HTMLInputElement).value ?? el.textContent ?? '').trim()
+        if (!raw) return
+        if (a.check) {
+          let ok = false
+          try { ok = !!new Function('v', '"use strict"; return (' + a.check + ')')(raw) } catch { ok = false }
+          if (ok) { settled = true; cbRef.current.onSuccess() }
+        } else {
+          const val = raw.replace(/\s/g, '')
+          const want = (a.value || '').replace(/\s/g, '')
+          if (val === want) { settled = true; cbRef.current.onSuccess() }
+        }
       })
+    }
+
+    // 拖动跟手：按住目标时记录被拖元素和它原来的 transform，移动中实时平移，松手复位
+    let dragEl: Element | null = null
+    let dragBase = ''
+    let dragPE = ''
+    let hotEl: Element | null = null
+    const finishDrag = () => {
+      if (dragEl) {
+        const s = (dragEl as HTMLElement).style
+        s.transform = dragBase
+        s.zIndex = ''
+        s.transition = ''
+        s.pointerEvents = dragPE
+        dragEl = null
+      }
+      if (hotEl) { hotEl.classList.remove('sb-drop-hot'); hotEl = null }
     }
 
     doc.addEventListener('pointerdown', e => {
       down = { x: e.clientX, y: e.clientY, t: Date.now(), moved: 0, onTarget: !!closest(e.target, '#' + act().targetId) }
       settled = false
-      if (act().type === 'long_press' && down.onTarget) {
+      const a = act()
+      // drag / slider：按住目标就开始跟手移动
+      if ((a.type === 'drag' || a.type === 'slider') && down.onTarget) {
+        dragEl = closest(e.target, '#' + a.targetId)
+        if (dragEl) {
+          const s = (dragEl as HTMLElement).style
+          dragBase = s.transform
+          dragPE = s.pointerEvents
+          s.transition = 'none'
+          s.zIndex = '99'
+          // 跟手移动后它会挡在指针下，禁掉命中检测才能看到下面的放置区
+          s.pointerEvents = 'none'
+        }
+      }
+      if (a.type === 'long_press' && down.onTarget) {
         holdTimer = window.setTimeout(() => {
           if (down && down.moved < 12 && !settled) { settled = true; cbRef.current.onSuccess() }
         }, 600)
       }
     })
     doc.addEventListener('pointermove', e => {
-      if (down) down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y))
+      if (!down) return
+      down.moved = Math.max(down.moved, Math.hypot(e.clientX - down.x, e.clientY - down.y))
+      if (!dragEl) return
+      const a = act()
+      const dx = e.clientX - down.x
+      const dy = e.clientY - down.y
+      if (a.type === 'slider') {
+        // 滑块只沿指定方向那条轴动
+        const t = a.direction === 'left' || a.direction === 'right'
+          ? `translate(${dx}px,0)` : `translate(0,${dy}px)`
+        ;(dragEl as HTMLElement).style.transform = t
+      } else {
+        ;(dragEl as HTMLElement).style.transform = `translate(${dx}px,${dy}px)`
+        // 拖到放置区上方时给绿色实心高亮
+        const land = closest(doc.elementFromPoint(e.clientX, e.clientY), '#' + (a.dropId || ''))
+        if (hotEl && hotEl !== land) hotEl.classList.remove('sb-drop-hot')
+        if (land) land.classList.add('sb-drop-hot')
+        hotEl = land
+      }
     })
+    // 手指移出或系统打断拖动也要复位，不然元素停在半路
+    doc.addEventListener('pointercancel', () => { finishDrag(); down = null })
+    doc.addEventListener('pointerleave', () => { finishDrag(); down = null })
     doc.addEventListener('pointerup', e => {
       if (holdTimer !== undefined) { clearTimeout(holdTimer); holdTimer = undefined }
+      finishDrag()
       if (!down || settled) { down = null; return }
       const dx = e.clientX - down.x
       const dy = e.clientY - down.y

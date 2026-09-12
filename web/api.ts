@@ -37,7 +37,8 @@ const SYSTEM = `你是培智学校的生活技能课老师。用户说出想学�
    - swipe 滑动翻页，data-direction 填 up/down/left/right
    - drag 拖动：data-target 是被拖的东西，再加 data-drop="放置位置的id"，放置位置画得明显些
    - slider 拖滑条：data-target 是滑条上的圆点，data-direction 填拖动方向（通常 right）
-   - input 输入：data-target 必须是真正的 <input type="text"> 或 <textarea> 标签，绝对不要用 <div> 画输入框（那样点不进去、打不了字），再加 data-value="要输入的内容"
+   - input 输入：data-target 必须是真正的 <input type="text"> 或 <textarea> 标签，绝对不要用 <div> 画输入框（那样点不进去、打不了字），再加 data-value="要输入的内容"。
+     如果内容不固定（如姓名、手机号、金额、密码），改用 data-check 写一条 JavaScript 判断式，v 表示用户当前输入的内容，返回真就算对，例如：手机号写 data-check="/^1\\d{10}$/.test(v)"、六位数字密码写 data-check="v.length === 6"、姓名包含姓写 data-check="v.includes('王')"。data-check 和 data-value 至少写一个，两个都写时以 data-check 为准。
    tap / long_press 的 data-direction 固定填 right。
 4. data-target 填目标元素的 id，这个 id 必须真实出现在这一步的 HTML 里，目标要够大好点（至少 44×44 像素）。
 5. 每一步都画完整界面，后一步要比前一步更接近完成，最后一步做完事情就完成。

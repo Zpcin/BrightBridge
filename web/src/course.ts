@@ -2,7 +2,7 @@ export type Persona = 'child' | 'senior'
 export type ActionType = 'tap' | 'long_press' | 'swipe' | 'drag' | 'slider' | 'input'
 export type Direction = 'up' | 'down' | 'left' | 'right'
 
-/** 一步的动作：类型 + 方向 + 目标（drag 还有放置目标，input 还有期望内容） */
+/** 一步的动作：类型 + 方向 + 目标（drag 有放置目标，input 有期望内容和判断式） */
 export interface StepAction {
   type: ActionType
   direction: Direction
@@ -11,6 +11,8 @@ export interface StepAction {
   dropId?: string
   /** input：要输入的内容 */
   value?: string
+  /** input：AI 写的判断式，v 表示输入的内容；不写就按等于 value 判断 */
+  check?: string
 }
 
 /** 一步练习：guide 形象化说明，html 是这一步的完整界面（原样渲染，不清理） */
@@ -63,6 +65,7 @@ export function parseCourseHtml(raw: string): Course | { error: string } {
     const targetId = (sec.getAttribute('data-target') || '').trim().slice(0, 40)
     const dropId = (sec.getAttribute('data-drop') || '').trim().slice(0, 40) || undefined
     const value = (sec.getAttribute('data-value') || '').slice(0, 40) || undefined
+    const check = (sec.getAttribute('data-check') || '').slice(0, 120) || undefined
 
     if (!guide) return { error: `第 ${i + 1} 步缺少操作说明` }
     if (!ACTION_TYPES.includes(type)) return { error: `第 ${i + 1} 步动作类型不对` }
@@ -73,9 +76,9 @@ export function parseCourseHtml(raw: string): Course | { error: string } {
       if (!dropId || !/^[a-zA-Z][\w-]*$/.test(dropId)) return { error: `第 ${i + 1} 步缺少放置目标 data-drop` }
       if (!sec.querySelector('#' + dropId)) return { error: `第 ${i + 1} 步找不到放置目标 ${dropId}` }
     }
-    if (type === 'input' && !value) return { error: `第 ${i + 1} 步缺少要输入的内容 data-value` }
+    if (type === 'input' && !value && !check) return { error: `第 ${i + 1} 步缺少要输入的内容 data-value 或判断式 data-check` }
     if (sec.innerHTML.length > 60000) return { error: `第 ${i + 1} 步界面太大` }
-    steps.push({ id: `s${i + 1}`, guide, why, action: { type, direction, targetId, dropId, value }, html: sec.innerHTML })
+    steps.push({ id: `s${i + 1}`, guide, why, action: { type, direction, targetId, dropId, value, check }, html: sec.innerHTML })
   }
   return { title, steps }
 }

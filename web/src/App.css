@@ -227,13 +227,12 @@ main.senior .bubble { font-size: clamp(23px, 5.6vw, 29px); }
 .dots i { width: 34px; height: 8px; border-radius: 4px; background: #9E9E9E; }
 .dots i.on { background: var(--teal); }
 
-/* 仿真舞台：AI 画的界面在沙箱 iframe 里渲染，厚边框像一台真设备。
+/* 仿真舞台：AI 画的界面在沙箱 iframe 里渲染。
    高度固定 640（课程画布 360×620 + 内边距），不再用 vh——短屏幕时页面正常滚动，界面不截断 */
 .stage {
   position: relative; width: min(380px, 100%); height: 640px; flex-shrink: 0;
-  background: #2B2B2B; border: 5px solid #1A1A1A; border-radius: 28px; padding: 10px;
-  box-shadow: 0 22px 44px rgba(16, 46, 66, .28), inset 0 3px 6px rgba(255, 255, 255, .22);
-  transition: box-shadow .2s, transform .15s;
+  background: none; border: 0; border-radius: 0; padding: 0;
+  transition: transform .15s;
 }
 .stage iframe { width: 100%; height: 100%; border: 0; border-radius: 18px; background: #fff; display: block; }
 .stage.shake { animation: shake .45s; }

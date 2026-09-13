@@ -77,26 +77,46 @@ function Stage({
   cbRef.current = { onSuccess, onWrong, onInvalid }
 
   const scale = persona === 'senior' ? 1.12 : 1
+  // step.html 是 section.innerHTML，不包含 section 标签本身。
+  // 但生成的 CSS 全部以 .sb-step 为祖先选择器（如 .sb-step .phone），
+  // 所以必须用 section 包裹，否则所有生成样式失效。
   const srcDoc = useMemo(() => `<!doctype html><html><head><meta charset="utf-8">
 <style>
 html,body{margin:0;padding:0;height:100%;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 body{font-family:system-ui,'PingFang SC','Microsoft YaHei',sans-serif;color:#1d2b36;font-size:${16 * scale}px}
-body>:not(style):not(script){width:100%;height:100%;display:block}
 input,textarea{user-select:text;-webkit-user-select:text}
 .sb-target{outline:4px solid #e8a13c !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
 .sb-drop{outline:4px dashed #2faa6b !important;outline-offset:3px;border-radius:12px;animation:sbglow 1.2s infinite !important}
 .sb-drop-hot{outline:6px solid #2faa6b !important;box-shadow:0 0 0 8px rgba(47,170,107,.25) inset,0 0 18px rgba(47,170,107,.5) !important;background-color:rgba(47,170,107,.12) !important}
 @keyframes sbglow{50%{outline-color:rgba(232,161,60,.25)}}
-</style></head><body>${step.html}</body></html>`, [step, scale])
+</style></head><body><section class="sb-step" style="display:block;width:100%;height:100%">${step.html}</section></body></html>`, [step, scale])
 
   const handleLoad = () => {
     const doc = frame.current?.contentDocument
     if (!doc) return
-    // 高亮这一步的目标；drag 的放置区用绿色虚线
     const act = () => stepRef.current.action
     const a0 = act()
-    doc.getElementById(a0.targetId)?.classList.add('sb-target')
+    // drag 的放置区用绿色虚线（这个一开始就显示，不影响判断）
     if (a0.dropId) doc.getElementById(a0.dropId)?.classList.add('sb-drop')
+
+    // 黄色高亮框：首次不显示，错一次后再提示目标在哪
+    let attempt = 0
+    let lastWrongEl: Element | null = null
+    const showHint = () => {
+      if (attempt === 1 && lastWrongEl) lastWrongEl.classList.add('sb-target')
+    }
+    const wrapWrong = (g: Gesture) => {
+      attempt++
+      lastWrongEl = doc.getElementById(act().targetId) || null
+      showHint()
+      cbRef.current.onWrong(g)
+    }
+    const wrapInvalid = () => {
+      attempt++
+      lastWrongEl = doc.getElementById(act().targetId) || null
+      showHint()
+      cbRef.current.onInvalid()
+    }
 
     // input 步骤：保证目标真的能打字——真输入框去掉只读，画出来的假框转成可编辑，并自动聚焦
     if (a0.type === 'input') {
@@ -224,28 +244,29 @@ input,textarea{user-select:text;-webkit-user-select:text}
       if (a.type === 'drag') {
         const over = doc.elementFromPoint(e.clientX, e.clientY)
         const landed = !!closest(over, '#' + (a.dropId || ''))
-        return started && landed ? cbRef.current.onSuccess() : cbRef.current.onWrong({ type: 'tap', direction: 'right' })
+        return started && landed ? cbRef.current.onSuccess() : wrapWrong({ type: 'tap', direction: 'right' })
       }
 
       // slider：必须按住圆点，沿指定方向拖出足够距离
       if (a.type === 'slider') {
         const dist = a.direction === 'left' ? -dx : a.direction === 'right' ? dx : a.direction === 'up' ? -dy : dy
-        return started && dist >= 40 ? cbRef.current.onSuccess() : cbRef.current.onWrong({ type: 'tap', direction: 'right' })
+        return started && dist >= 40 ? cbRef.current.onSuccess() : wrapWrong({ type: 'tap', direction: 'right' })
       }
 
       // tap / long_press / swipe：手势分类 + 目标命中
       const g = classifyGesture(dx, dy, dt, moved)
       const hit = !!closest(e.target, '#' + a.targetId)
-      if (g === 'invalid') return cbRef.current.onInvalid()
-      if (!hit) return cbRef.current.onWrong(g)
+      if (g === 'invalid') return wrapInvalid()
+      if (!hit) return wrapWrong(g)
       const right = g.type === a.type && (g.type !== 'swipe' || g.direction === a.direction)
-      right ? cbRef.current.onSuccess() : cbRef.current.onWrong(g)
+      right ? cbRef.current.onSuccess() : wrapWrong(g)
     })
   }
 
   return (
     <div className={`stage${shake ? ' shake' : ''}${cheer ? ' cheer' : ''}`}>
       <iframe
+        key={step.id}
         ref={frame}
         title="仿真界面"
         srcDoc={srcDoc}

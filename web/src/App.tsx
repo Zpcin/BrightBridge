@@ -12,7 +12,7 @@ type Mood = 'normal' | 'happy' | 'care'
 
 /** Web Speech API 的事件类型（TS 标准 DOM 库里没有） */
 interface SRAlternative { transcript: string }
-interface SRResult { 0: SRAlternative; length: number; [index: number]: SRAlternative }
+interface SRResult { isFinal: boolean; 0: SRAlternative; length: number; [index: number]: SRAlternative }
 interface SRResultList { 0: SRResult; length: number; [index: number]: SRResult }
 interface SREvent { results: SRResultList }
 
@@ -292,12 +292,17 @@ function BubbleGame() {
 }
 
 function App() {
-  const [persona, setPersona] = useState<Persona>('senior')
+  // 模式：第一次选完记住，之后主页不再出现模式切换，想改去角落的设置里
+  const [persona, setPersona] = useState<Persona>(() => (localStorage.getItem('sb-persona') === 'child' ? 'child' : 'senior'))
+  const [needPersona, setNeedPersona] = useState(() => !localStorage.getItem('sb-persona'))
+  const [showSettings, setShowSettings] = useState(false)
   const [task, setTask] = useState('')
   const [course, setCourse] = useState<Course>()
   const [step, setStep] = useState(0)
   const [phase, setPhase] = useState<Phase>('home')
   const [listening, setListening] = useState(false)
+  const [interim, setInterim] = useState('') // 按住说话时的实时字幕
+  const recRef = useRef<{ stop(): void } | null>(null)
   const [banner, setBanner] = useState('')
   const [errors, setErrors] = useState(0)
   const [shake, setShake] = useState(false)
@@ -379,11 +384,23 @@ function App() {
   // 卸载时关流
   useEffect(() => () => { streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
 
-  const voice = () => {
+  /** 第一次选定或设置里改模式：记住选择，主页不再出现模式切换 */
+  const choosePersona = (p: Persona) => {
+    setPersona(p)
+    localStorage.setItem('sb-persona', p)
+    setNeedPersona(false)
+  }
+
+  /** 点一下开始听，再点一下停止，只负责把听到的文字显示出来 */
+  const toggleTalk = () => {
+    // 正在听 → 再点一下就停
+    if (listening) { recRef.current?.stop(); return }
     const w = window as unknown as Record<string, unknown>
     type Rec = new () => {
       lang: string
+      interimResults: boolean
       start(): void
+      stop(): void
       onresult: ((e: SREvent) => void) | null
       onerror: (() => void) | null
       onend: (() => void) | null
@@ -392,10 +409,19 @@ function App() {
     if (!R) return setBanner('这个浏览器不支持语音输入，请换 Chrome 或 Edge 打开。')
     const r = new R()
     r.lang = 'zh-CN'
-    setListening(true)
-    r.onresult = (e: SREvent) => { setTask(e.results[0][0].transcript); setListening(false) }
-    r.onerror = () => { setListening(false); setBanner('没有听清，请再按一次说。') }
+    r.interimResults = true
+    setListening(true); setInterim('')
+    r.onresult = (e: SREvent) => {
+      const res = e.results[e.results.length - 1]
+      const text = res[0].transcript
+      if (res.isFinal) {
+        setListening(false); setInterim('')
+        if (text.trim()) setTask(text)
+      } else setInterim(text)
+    }
+    r.onerror = () => { setListening(false); setInterim(''); setBanner('没听清，再点一下按钮重新说。') }
     r.onend = () => setListening(false)
+    recRef.current = r
     r.start()
   }
 
@@ -426,8 +452,10 @@ function App() {
     try {
       const imgs = await Promise.all(files.map(fileToImage))
       setRefImages(a => [...a, ...imgs].slice(0, 3))
+      // 拍了不会用的东西：直接照着照片出练习，不用再说话打字
+      generateMulti(['照着我拍的图，教我用图里的东西'], '', imgs)
     } catch {
-      setBanner('这张图打不开，换一张试试。')
+      setBanner('这张照片打不开，换一张再拍。')
     }
   }
 
@@ -439,7 +467,7 @@ function App() {
 
   /** 一次生成一个练习（语音入口）；带着参考图让 AI 照着画 */
   const generate = (input = task) => {
-    if (!input.trim()) return setBanner('请先按住语音按钮，说出想学的事情。')
+    if (!input.trim()) return setBanner('请先按住大按钮，说出想学的事。')
     void generateMulti([input], '', refImages)
   }
 
@@ -598,47 +626,86 @@ function App() {
     }
   }
 
-  const personaName = persona === 'senior' ? '老人 / 数字新手' : '儿童 / 学生'
-
   return (
     <main className={persona}>
-      <header>
-        <b>智触心桥 <span>SmartBridge</span></b>
-        <small>安全仿真练习 · 不会动真实设备</small>
+      {/* 软件名缩在角落，主界面留给练习本身 */}
+      <header className="appbar">
+        <small className="appname">智触心桥</small>
+        <button className="gearbtn" onClick={() => setShowSettings(s => !s)} aria-label="设置">
+          <Icon name="gear" />
+        </button>
       </header>
+
+      {/* 角落的设置：平时不出现，家属/陪同者可以在这里改模式 */}
+      {showSettings && (
+        <div className="settings">
+          <b>给谁练：</b>
+          <button className={persona === 'senior' ? 'on' : ''} onClick={() => choosePersona('senior')}>老人 / 数字新手</button>
+          <button className={persona === 'child' ? 'on' : ''} onClick={() => choosePersona('child')}>儿童 / 学生</button>
+          <button className="ghost" onClick={() => setShowSettings(false)}>好</button>
+        </div>
+      )}
+
+      {/* 第一次启动：选一次谁来用，之后记住不再问 */}
+      {needPersona && (
+        <div className="whoPage">
+          <h1>谁来练习？</h1>
+          <p className="sub">选一次就行，以后可以直接开始</p>
+          <div className="whocards">
+            <button className="whocard" onClick={() => choosePersona('senior')}>
+              <Icon name="user" />
+              <b>老人 / 数字新手</b>
+              <span>字更大，说得更慢，一步一步带着练</span>
+            </button>
+            <button className="whocard" onClick={() => choosePersona('child')}>
+              <Icon name="star" />
+              <b>儿童 / 学生</b>
+              <span>像小游戏，做对一步得一颗星</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {phase === 'home' && (
         <section className="page home">
-          <p className="eyebrow">数字生活训练助手 · {personaName}</p>
-          <h1>想说要学什么，<em>我带你一步步练</em></h1>
-          <div className="modes">
-            <button className={persona === 'child' ? 'on' : ''} onClick={() => setPersona('child')}>儿童 / 学生</button>
-            <button className={persona === 'senior' ? 'on' : ''} onClick={() => setPersona('senior')}>老人 / 数字新手</button>
+          <div className="safestrip">
+            <Icon name="shield" />
+            <span>在这里随便点：不会弄坏，也不会扣钱</span>
           </div>
-          <div className="voicebox">
-            <div className="heard">{task || '还没听到内容，按下面的按钮开始说话'}</div>
-            <button className={`mic ${listening ? 'rec' : ''}`} onClick={voice}>
-              {listening ? '正在聆听…松开等结果' : '按一下，说出想学的事'}
+          <h1 className="homeTitle">想学什么？</h1>
+          <p className="homeSub">点一下按钮开始说</p>
+          <div className={`heard${listening || task ? '' : ' dim'}`}>
+            {listening ? (interim || '在听你说…') : (task || '你说的话会出现在这里')}
+          </div>
+          {/* 有内容后才出现：让用户确认再生成，方便中断/修改 */}
+          {task && !listening && (
+            <button className="startbtn" onClick={() => generate()}>
+              开始练习
             </button>
-            <button className="go" onClick={() => generate()} disabled={!task.trim()}>让 AI 生成练习</button>
-            <button className="scan" onClick={() => openCam('detect')}>📷 打开摄像头，让我看看你在做什么</button>
-            <div className="refs">
-              <button className="ghost" onClick={() => fileRef.current?.click()}>📎 加参考图</button>
-              <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
-              {refImages.map((src, i) => (
-                <span key={i} className="refthumb">
-                  <img src={src} alt={`参考图${i + 1}`} onClick={() => { setRefIdx(i); setShowRefs(true) }} />
-                  <button aria-label="删除参考图" onClick={() => setRefImages(a => a.filter((_, j) => j !== i))}>×</button>
-                </span>
+          )}
+          <button
+            className={`micbig${listening ? ' rec' : ''}`}
+            onClick={toggleTalk}
+          >
+            <Icon name="mic" />
+            <b>{listening ? '点一下停止' : '点一下说话'}</b>
+          </button>
+          <div className="homeDivider" />
+          <button className="photobig" onClick={() => fileRef.current?.click()}>
+            <Icon name="camera" />
+            <b>拍一下不会用的东西</b>
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
+          <button className="minilink" onClick={() => openCam('detect')}>
+            <Icon name="video" /><span>让摄像头看看我在做什么</span>
+          </button>
+          <div className="quick">
+            <span>不用等，直接练：</span>
+            <div className="qrow">
+              {demoCourses.map(c => (
+                <button key={c.title} onClick={() => startCourse(c, '本地课程，一样可以练。')}>{c.title}</button>
               ))}
             </div>
-            <p className="camnote">可以把真机器的照片或手机截图发给 AI，它会照着图里的样子画练习。画面只发给 AI，不会保存。</p>
-          </div>
-          <div className="quick">
-            <span>不想等？直接开始：</span>
-            {demoCourses.map(c => (
-              <button key={c.title} onClick={() => startCourse(c, '本地课程，一样可以练。')}>{c.title}</button>
-            ))}
           </div>
           {banner && <p className="banner">{banner}</p>}
         </section>

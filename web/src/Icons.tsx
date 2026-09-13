@@ -31,6 +31,7 @@ const paths = {
   star: ['M12 3l2.8 5.8 6.2.9-4.5 4.4 1.1 6.2L12 17.4l-5.6 3 1.1-6.2L3 9.7l6.2-.9z'],
   check: ['M20 6.5L9.5 17 4 11.5'],
   arrow: ['M5 12h14', 'M13 6l6 6-6 6'],
+  mic: ['M12 2.5a3 3 0 00-3 3v6a3 3 0 006 0v-6a3 3 0 00-3-3z', 'M19 10v1.5a7 7 0 01-14 0V10', 'M12 19.5V22', 'M8.5 22h7'],
 }
 
 export type IconName = keyof typeof paths

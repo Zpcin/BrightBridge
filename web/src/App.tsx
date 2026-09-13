@@ -651,7 +651,10 @@ function App() {
     <main className={persona}>
       {/* 软件名缩在角落，主界面留给练习本身 */}
       <header className="appbar">
-        <small className="appname">智触心桥</small>
+        <div className="appbrand">
+          <img src="/logo.png" alt="" className="applogo" />
+          <small className="appname">智触心桥</small>
+        </div>
         <button className="gearbtn" onClick={() => setShowSettings(s => !s)} aria-label="设置">
           <Icon name="gear" />
         </button>

@@ -1,3 +1,0 @@
-item;obj\Release\net10.0-android\android-arm64\res\values\styles.xml
-resources;obj\Release\net10.0-android\android-arm64\res\values\styles.xml
-style;obj\Release\net10.0-android\android-arm64\res\values\styles.xml
